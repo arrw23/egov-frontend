@@ -220,7 +220,7 @@ export const api = {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: JSON.stringify({ prompt, category }),
     }, true, () => ({
-      data: `To obtain your digital Taxpayer Identification Number (TIN) ID through the eGovPH app, ensure you have a Digital TIN registered in the BIR ORUS system. Prompt processed: "${prompt}". You can also file unified medical guarantee letters directly through GabayMed.`,
+      data: `To obtain your digital Taxpayer Identification Number (TIN) ID through the eGovPH app, ensure you have a Digital TIN registered in the BIR ORUS system. Prompt processed: "${prompt}". You can also file unified medical guarantee letters directly through eGov's eGuarantee.`,
       session_id: "b67017a4-da57-40ab-96c9-ca0ccb530ec7",
     }));
   },
@@ -381,7 +381,7 @@ export const api = {
     }));
   },
 
-  // --- Core GabayMed Auth & Session ---
+  // --- Core eGov's eGuarantee Auth & Session ---
   async getMe(): Promise<{ status: string; user: User }> {
     return request<{ status: string; user: User }>('/me', {}, false, () => ({
       status: "success",

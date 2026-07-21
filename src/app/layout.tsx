@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "GabayMed | Medical Assistance System",
-  description: "Unified Philippine eGov digital medical guarantee letter platform.",
+  title: "eGov's eGuarantee | Service Requirement & Assistance Platform",
+  description: "Unified Philippine eGov service requirement builder & digital guarantee letter platform.",
 };
 
 export default function RootLayout({

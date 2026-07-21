@@ -156,7 +156,7 @@ function SSOContent() {
             </div>
 
             <div style={{ fontSize: "0.8rem", color: "#059669", fontWeight: 800, background: "#ecfdf5", padding: "0.6rem 1rem", borderRadius: "9999px", border: "1.5px solid #a7f3d0", display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "center" }}>
-              <ShieldCheck size={16} /> Redirecting to GabayMed Portal...
+              <ShieldCheck size={16} /> Redirecting to eGov's eGuarantee Portal...
             </div>
           </div>
         )}

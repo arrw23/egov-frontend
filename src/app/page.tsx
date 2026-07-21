@@ -34,7 +34,7 @@ export default function Home() {
           setActiveCase(res.cases[0]);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
 
     if (typeof window !== "undefined" && window.location.search.includes("sso=authenticated")) {
       let customName = "JOSIE SANTOS DELA CRUZ";
@@ -44,7 +44,7 @@ export default function Home() {
           const parsed = JSON.parse(stored);
           if (parsed.name) customName = parsed.name;
         }
-      } catch (e) {}
+      } catch (e) { }
 
       api.mockLogin("applicant")
         .then(() => {
@@ -82,7 +82,7 @@ export default function Home() {
         onLogin={async (r) => {
           try {
             await api.mockLogin(r === "applicant" ? "applicant" : r === "hospital_staff" ? "hospital" : "agency");
-          } catch (e) {}
+          } catch (e) { }
           go(r === "applicant" ? "verify" : r === "hospital_staff" ? "hospital" : "agency", r);
         }}
       />
@@ -95,7 +95,7 @@ export default function Home() {
         onVerify={async () => {
           try {
             await api.verifyIdentity(true);
-          } catch (e) {}
+          } catch (e) { }
           setVerified(true);
         }}
         onContinue={() => go("dashboard")}
@@ -123,7 +123,7 @@ export default function Home() {
               approve={async (amount) => {
                 try {
                   await api.submitDecision(1, "approve", amount, "Eligible medical assistance");
-                } catch (e) {}
+                } catch (e) { }
                 setApproved(true);
                 notify("Guarantee letter GL-DSWD-2026-04821 generated and issued!");
               }}
@@ -135,7 +135,7 @@ export default function Home() {
               utilize={async () => {
                 try {
                   await api.recordUtilization(1, 50000, "INV-2026-9901");
-                } catch (e) {}
+                } catch (e) { }
                 setUsed(50000);
                 notify("₱50,000 utilization recorded; citizen and DSWD NCR notified!");
               }}

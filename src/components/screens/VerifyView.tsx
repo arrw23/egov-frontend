@@ -196,7 +196,7 @@ export function VerifyView({
             <div>Liveness Confidence Score: <b style={{ color: "#059669" }}>98.71% SUCCEEDED (Tier II Verified)</b></div>
           </div>
           <button className="primary wide" onClick={onContinue}>
-            Continue to GabayMed Portal <ArrowRight size={20} />
+            Continue to eGov's eGuarantee Portal <ArrowRight size={20} />
           </button>
         </section>
       )}

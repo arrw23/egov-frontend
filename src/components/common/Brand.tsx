@@ -8,8 +8,8 @@ export function Brand() {
         <HeartPulse size={24} />
       </i>
       <span>
-        <b>GabayMed</b>
-        <small>Medical Assistance</small>
+        <b>eGov's eGuarantee</b>
+        <small>Requirement & Guarantee System</small>
       </span>
     </div>
   );
