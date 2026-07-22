@@ -22,27 +22,27 @@ import { Brand } from "../common/Brand";
 export const navItems: Record<Role, [Screen, string, any][]> = {
   applicant: [
     ["dashboard", "Overview", LayoutDashboard],
-    ["apply", "New application", FileText],
-    ["documents", "Upload documents", UploadCloud],
-    ["catalog", "Verified Catalog", BadgeCheck],
+    ["apply", "New Application", FileText],
+    ["documents", "Upload Documents", UploadCloud],
+    ["catalog", "Verified Inventory", BadgeCheck],
     ["submit", "Provider & Agency", Building2],
     ["guarantee", "Digital Guarantee", WalletCards],
-    ["egov_hub", "eGov API Hub", Network],
+    ["egov_hub", "System Testing Hub", Network],
   ],
   hospital_staff: [
-    ["hospital", "Pending requests", Users],
-    ["hospital_detail", "Submit & certify", FileCheck2],
-    ["catalog", "Verified Catalog", BadgeCheck],
-    ["validate", "Validate guarantee", ScanLine],
-    ["egov_hub", "eGov API Hub", Network],
+    ["hospital", "Pending Requests", Users],
+    ["hospital_detail", "Submit & Certify", FileCheck2],
+    ["catalog", "Verified Inventory", BadgeCheck],
+    ["validate", "Validate Guarantee", ScanLine],
+    ["egov_hub", "System Testing Hub", Network],
   ],
   agency_evaluator: [
-    ["agency", "Pending Inbox (Sorted)", LayoutDashboard],
+    ["agency", "Pending Inbox", LayoutDashboard],
     ["builder", "Requirement Builder", Boxes],
-    ["agency_review", "Unified case review", ShieldCheck],
-    ["catalog", "Verified Catalog", BadgeCheck],
-    ["guarantee", "Issued guarantee", WalletCards],
-    ["egov_hub", "eGov API Hub", Network],
+    ["agency_review", "Case Review", ShieldCheck],
+    ["catalog", "Verified Inventory", BadgeCheck],
+    ["guarantee", "Issued Guarantee", WalletCards],
+    ["egov_hub", "System Testing Hub", Network],
   ],
 };
 
@@ -66,7 +66,7 @@ export function Nav({
       ))}
       <div className="navFoot">
         <span>
-          <i style={{ width: 8, height: 8, borderRadius: "50%", background: "#059669" }} /> eGovPH API Live Connected
+          <i style={{ width: 8, height: 8, borderRadius: "50%", background: "#059669" }} /> eGovPH Portal Connected
         </span>
         <button onClick={() => go("login")} style={{ color: "#e11d48" }}>
           <LogOut size={18} /> Sign out
@@ -147,7 +147,7 @@ export function MobileDrawer({
 
         <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: "1rem", paddingTop: "1rem", borderTop: "2px solid #e0e7ff" }}>
           <div style={{ fontSize: "0.8rem", fontWeight: 800, color: "#059669", background: "#ecfdf5", padding: "0.6rem 1rem", borderRadius: "9999px", border: "1.5px solid #a7f3d0", display: "flex", gap: "0.5rem", alignItems: "center" }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#059669" }} /> eGovPH API Live Connected
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#059669" }} /> eGovPH Portal Connected
           </div>
           <button className="outline wide" style={{ color: "#e11d48", borderColor: "#e11d48" }} onClick={() => go("login")}>
             <LogOut size={18} /> Sign out
@@ -183,8 +183,8 @@ export function Top({
         <span className="ssoBadge">
           <BadgeCheck color="#1e1b4b" size={18} /> eGovPH SSO Authenticated
         </span>
-        <span className="ssoBadge" style={{ background: "#ecfdf5", color: "#166534", borderColor: "#a7f3d0" }} title="Profile updates occur exclusively through eGovPH SSO">
-          🔒 Profile Managed via eGovPH SSO (Read-Only)
+        <span className="ssoBadge" style={{ background: "#ecfdf5", color: "#166534", borderColor: "#a7f3d0" }} title="Profile verified via eGovPH SSO">
+          🔒 Profile Verified via eGovPH SSO
         </span>
       </div>
 

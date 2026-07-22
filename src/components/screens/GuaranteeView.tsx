@@ -17,7 +17,7 @@ export function GuaranteeView({ go, used }: { go: (s: Screen) => void; used: num
       <Head
         over="DIGITAL GUARANTEE LETTER"
         title="Guarantee Letter GL-DSWD-2026-04821"
-        text="Issued electronically by DSWD NCR. Notifications sent via eMessage."
+        text="Issued electronically by DSWD NCR. Notifications sent to applicant and hospital."
         action={<Status tone="green">{used ? "Fully Utilized" : "Valid & Active"}</Status>}
       />
 
@@ -75,12 +75,12 @@ export function GuaranteeView({ go, used }: { go: (s: Screen) => void; used: num
             </div>
             <div style={{ textAlign: "center" }}>
               <QRCodeSVG value="https://verify.egov.ph/gl/GL-DSWD-2026-04821" size={110} />
-              <small style={{ display: "block", fontSize: "0.75rem", color: "#4338ca", fontWeight: 800, marginTop: "0.35rem" }}>Scan to verify</small>
+              <small style={{ display: "block", fontSize: "0.75rem", color: "#4338ca", fontWeight: 800, marginTop: "0.35rem" }}>Scan to verify authenticity</small>
             </div>
           </footer>
 
-          <div style={{ marginTop: "1.75rem", padding: "0.85rem 1.25rem", background: "#f5f3ff", borderRadius: 16, border: "2px solid #1e1b4b", fontSize: "0.8rem", fontWeight: 800, color: "#1e1b4b", display: "flex", gap: "0.6rem", alignItems: "center" }}>
-            <ShieldCheck size={18} color="#059669" /> <span>eGovChain Reference: <b>EGC-7F3A-91D2-B840</b> (Only cryptographic hashes recorded)</span>
+          <div style={{ marginTop: "1.75rem", padding: "0.85rem 1.25rem", background: "#f5f3ff", borderRadius: 16, border: "2px solid #1e1b4b", fontSize: "0.8rem", fontWeight: 800, color: "#1e1b4b", display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap" }}>
+            <ShieldCheck size={18} color="#059669" /> <span>Digital Reference: <b>EGC-7F3A-91D2-B840</b> (Verified Record Seal)</span>
           </div>
         </section>
 
@@ -109,7 +109,7 @@ export function ValidateView({ used, utilize }: { used: number; utilize: () => v
       <div className="cols">
         <section className="card">
           <h2 style={{ fontSize: "1.35rem", fontWeight: 900 }}>Scan / Enter Reference</h2>
-          <div style={{ background: "#f5f3ff", padding: "2.5rem", border: "2.5px dashed #1e1b4b", borderRadius: 24, textAlign: "center", marginBottom: "1.75rem" }}>
+          <div style={{ background: "#f5f3ff", padding: "2.5rem 1.5rem", border: "2.5px dashed #1e1b4b", borderRadius: 24, textAlign: "center", marginBottom: "1.75rem" }}>
             <ScanLine size={56} color="#1e1b4b" />
             <p style={{ margin: "0.75rem 0 0 0", fontWeight: 900, fontSize: "1.1rem" }}>Simulated QR Scanner Active</p>
           </div>
@@ -125,9 +125,9 @@ export function ValidateView({ used, utilize }: { used: number; utilize: () => v
         </section>
 
         <section className="card" style={{ background: "#dcfce7" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem", flexWrap: "wrap", gap: "0.5rem" }}>
             <span style={{ color: "#14532d", fontWeight: 900, fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
-              <CheckCircle2 size={20} /> TAMPER-EVIDENT VERIFIED
+              <CheckCircle2 size={20} /> VERIFIED GUARANTEE RECORD
             </span>
             <Status tone="green">{used ? "Fully Utilized" : "Valid"}</Status>
           </div>
@@ -140,11 +140,11 @@ export function ValidateView({ used, utilize }: { used: number; utilize: () => v
             <div style={{ display: "flex", justifyContent: "space-between" }}><span>Approved Guarantee</span><b>₱50,000.00</b></div>
             <div style={{ display: "flex", justifyContent: "space-between" }}><span>Available Balance</span><b>{money(50000 - used)}</b></div>
             <div style={{ display: "flex", justifyContent: "space-between" }}><span>Expiration Date</span><b>20 August 2026</b></div>
-            <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1.5px solid #e0e7ff", paddingTop: "0.5rem" }}><span>eGovPay Direct Settlement</span><b style={{ color: "#059669" }}>PAY-2026-A24D (Landbank Direct)</b></div>
+            <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1.5px solid #e0e7ff", paddingTop: "0.5rem" }}><span>Direct Settlement</span><b style={{ color: "#059669" }}>Landbank Direct Settlement</b></div>
           </div>
 
           <button disabled={used > 0} className="primary wide" onClick={utilize}>
-            <CheckCircle2 size={20} /> {used > 0 ? "Guarantee Fully Utilized & eGovPay Settled" : "Record ₱50,000 Guarantee Utilization & eGovPay Settlement"}
+            <CheckCircle2 size={20} /> {used > 0 ? "Guarantee Fully Utilized & Settled" : "Record ₱50,000 Guarantee Utilization & Settlement"}
           </button>
         </section>
       </div>

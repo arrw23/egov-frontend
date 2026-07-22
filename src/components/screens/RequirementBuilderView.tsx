@@ -20,6 +20,7 @@ import {
   Building,
 } from "lucide-react";
 import { Screen } from "@/types";
+import { getSavedRequirementRule, saveRequirementRule } from "@/lib/requirementStore";
 
 export interface RequirementPaperBlock {
   id: string;
@@ -70,8 +71,8 @@ export const AVAILABLE_PAPER_BLOCKS: RequirementPaperBlock[] = [
   },
   {
     id: "proof_authorization",
-    title: "Proof you can file for someone",
-    subtitle: "issued by authorization",
+    title: "Proof of Authorization",
+    subtitle: "issued by applicant/patient",
     color: "#8b5cf6",
     iconName: "user",
     alreadyInWallet: false,
@@ -124,8 +125,6 @@ const PRESETS = [
   },
 ];
 
-import { getSavedRequirementRule, saveRequirementRule } from "@/lib/requirementStore";
-
 export function RequirementBuilderView({
   go,
   notify,
@@ -159,7 +158,7 @@ export function RequirementBuilderView({
 
   const addBlock = (block: RequirementPaperBlock) => {
     setActiveBlocks((prev) => [...prev, { ...block, id: `${block.id}_${Date.now()}` }]);
-    if (notify) notify(`Added "${block.title}" block to build!`);
+    if (notify) notify(`Added "${block.title}" block!`);
   };
 
   const removeBlock = (index: number) => {
@@ -178,7 +177,7 @@ export function RequirementBuilderView({
 
   const clearCanvas = () => {
     setActiveBlocks([]);
-    if (notify) notify("Canvas cleared. Drag or tap blocks to build!");
+    if (notify) notify("Canvas cleared.");
   };
 
   const loadPreset = (preset: (typeof PRESETS)[0]) => {
@@ -188,7 +187,7 @@ export function RequirementBuilderView({
       .map((id) => AVAILABLE_PAPER_BLOCKS.find((b) => b.id === id))
       .filter(Boolean) as RequirementPaperBlock[];
     setActiveBlocks(selected.map((b) => ({ ...b, id: `${b.id}_${Date.now()}` })));
-    if (notify) notify(`Loaded "${preset.name}" rule template!`);
+    if (notify) notify(`Loaded "${preset.name}" template!`);
   };
 
   const handleSave = () => {
@@ -199,7 +198,7 @@ export function RequirementBuilderView({
       savedAt: new Date().toISOString(),
     });
     if (notify) {
-      notify(`Saved "${serviceTitle}" requirement rule (${activeBlocks.length} blocks)! Citizen checklist dynamically synced.`);
+      notify(`Saved "${serviceTitle}" requirement rule (${activeBlocks.length} blocks)! Citizen checklist updated.`);
     }
     go("agency");
   };
@@ -221,7 +220,7 @@ export function RequirementBuilderView({
           boxShadow: "0 6px 0 #1e1b4b",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "1rem", minWidth: 220 }}>
           <div
             style={{
               width: 44,
@@ -236,6 +235,7 @@ export function RequirementBuilderView({
               fontSize: "1.2rem",
               border: "2px solid #1e1b4b",
               boxShadow: "0 3px 0 #6366f1",
+              flexShrink: 0,
             }}
           >
             R
@@ -245,38 +245,40 @@ export function RequirementBuilderView({
               Requirement Builder
             </h1>
             <p style={{ fontSize: "0.85rem", color: "#6366f1", margin: 0, fontWeight: 700 }}>
-              Snap blocks together to build a service... like building with LEGO
+              Select and arrange requirement blocks to define a streamlined checklist for citizens.
             </p>
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div style={{ display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap", width: "100%", maxWidth: "100%", justifyContent: "flex-start" }}>
+          <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", flex: 1, minWidth: 240 }}>
             {PRESETS.map((p) => (
               <button
                 key={p.name}
                 className="outline"
-                style={{ padding: "0.4rem 0.85rem", fontSize: "0.75rem", fontWeight: 800 }}
+                style={{ padding: "0.4rem 0.75rem", fontSize: "0.78rem", fontWeight: 800 }}
                 onClick={() => loadPreset(p)}
               >
                 Preset: {p.agency}
               </button>
             ))}
           </div>
-          <button
-            className="outline"
-            onClick={clearCanvas}
-            style={{ padding: "0.55rem 1.1rem", fontSize: "0.85rem", gap: "0.4rem" }}
-          >
-            <RotateCcw size={16} /> Clear
-          </button>
-          <button
-            className="primary"
-            onClick={handleSave}
-            style={{ padding: "0.55rem 1.3rem", fontSize: "0.85rem", gap: "0.5rem" }}
-          >
-            <Save size={16} /> Save service
-          </button>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button
+              className="outline"
+              onClick={clearCanvas}
+              style={{ padding: "0.5rem 1rem", fontSize: "0.85rem", gap: "0.35rem" }}
+            >
+              <RotateCcw size={16} /> Clear
+            </button>
+            <button
+              className="primary"
+              onClick={handleSave}
+              style={{ padding: "0.5rem 1.2rem", fontSize: "0.85rem", gap: "0.45rem" }}
+            >
+              <Save size={16} /> Save Service
+            </button>
+          </div>
         </div>
       </div>
 
@@ -291,6 +293,7 @@ export function RequirementBuilderView({
             display: "flex",
             flexDirection: "column",
             gap: "0.75rem",
+            margin: 0,
           }}
         >
           <div
@@ -302,7 +305,7 @@ export function RequirementBuilderView({
               marginBottom: "0.25rem",
             }}
           >
-            DRAG A PAPER INTO THE BUILD →
+            TAP OR DRAG A BLOCK TO ADD →
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -312,7 +315,7 @@ export function RequirementBuilderView({
                 className="legoPaletteBlock"
                 style={{ background: block.color }}
                 onClick={() => addBlock(block)}
-                title="Click or drag to add to builder"
+                title="Tap to add block to canvas"
               >
                 <div
                   style={{
@@ -338,22 +341,22 @@ export function RequirementBuilderView({
                 </div>
                 <Plus size={18} style={{ opacity: 0.9, flexShrink: 0 }} />
 
-                {/* LEGO Interlocking Notch on right edge */}
+                {/* Interlocking Notch on right edge */}
                 <div className="legoTabRight" />
               </div>
             ))}
           </div>
         </div>
 
-        {/* Middle Column: Dotted Canvas & Interlocking Stack */}
+        {/* Middle Column: Canvas & Interlocking Stack */}
         <div className="builderCanvas">
-          {/* Canvas Header Block (Dark Navy Container) */}
+          {/* Canvas Header Block */}
           <div
             style={{
               background: "#1e2030",
               color: "#ffffff",
               borderRadius: activeBlocks.length > 0 ? "20px 20px 0 0" : 20,
-              padding: "1.5rem",
+              padding: "1.25rem 1.5rem",
               border: "2.5px solid #1e1b4b",
               boxShadow: "0 4px 0 #1e1b4b",
               position: "relative",
@@ -370,29 +373,31 @@ export function RequirementBuilderView({
                 marginBottom: "0.4rem",
               }}
             >
-              WHEN A CITIZEN REQUESTS
+              WHEN A CITIZEN APPLIES FOR
             </span>
 
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
               <input
                 value={serviceTitle}
                 onChange={(e) => setServiceTitle(e.target.value)}
+                placeholder="Service Title"
                 style={{
                   background: "transparent",
                   border: "none",
                   borderBottom: "2px dashed #475569",
                   color: "#ffffff",
-                  fontSize: "1.6rem",
+                  fontSize: "1.4rem",
                   fontWeight: 900,
                   padding: "0.2rem 0",
                   outline: "none",
-                  width: "calc(100% - 100px)",
-                  minWidth: 200,
+                  flex: 1,
+                  minWidth: 160,
                 }}
               />
               <input
                 value={agencyName}
                 onChange={(e) => setAgencyName(e.target.value)}
+                placeholder="Agency"
                 style={{
                   background: "#334155",
                   color: "#93c5fd",
@@ -401,7 +406,7 @@ export function RequirementBuilderView({
                   padding: "0.3rem 0.75rem",
                   fontSize: "0.85rem",
                   fontWeight: 800,
-                  width: 90,
+                  width: 100,
                   textAlign: "center",
                 }}
               />
@@ -409,16 +414,16 @@ export function RequirementBuilderView({
 
             <div
               style={{
-                marginTop: "1.25rem",
+                marginTop: "1rem",
                 fontSize: "0.75rem",
                 fontWeight: 900,
                 color: "#cbd5e1",
                 letterSpacing: "0.1em",
                 borderTop: "1px dashed #334155",
-                paddingTop: "0.85rem",
+                paddingTop: "0.75rem",
               }}
             >
-              ...THEY MUST PROVIDE:
+              ...THE REQUIRED DOCUMENTS ARE:
             </div>
           </div>
 
@@ -427,7 +432,7 @@ export function RequirementBuilderView({
             {activeBlocks.length === 0 ? (
               <div
                 style={{
-                  padding: "3.5rem 1.5rem",
+                  padding: "3rem 1.25rem",
                   textAlign: "center",
                   border: "2.5px dashed #cbd5e1",
                   borderRadius: "0 0 20px 20px",
@@ -435,12 +440,12 @@ export function RequirementBuilderView({
                   marginTop: -2,
                 }}
               >
-                <Sparkles size={36} color="#6366f1" style={{ marginBottom: "0.5rem" }} />
-                <h4 style={{ margin: "0.2rem 0", fontSize: "1.1rem", fontWeight: 900, color: "#1e1b4b" }}>
-                  Canvas is empty!
+                <Sparkles size={32} color="#6366f1" style={{ marginBottom: "0.5rem" }} />
+                <h4 style={{ margin: "0.2rem 0", fontSize: "1.05rem", fontWeight: 900, color: "#1e1b4b" }}>
+                  Canvas is empty
                 </h4>
                 <p style={{ margin: 0, fontSize: "0.85rem", color: "#64748b", fontWeight: 700 }}>
-                  Click any paper block from the left panel to snap it here into the requirement chain.
+                  Tap any paper block from the left panel to snap it here into the requirement list.
                 </p>
               </div>
             ) : (
@@ -469,11 +474,11 @@ export function RequirementBuilderView({
                     {!isFirst && <div className="legoNotchTop" />}
 
                     {/* Left Icon & Text */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.85rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", minWidth: 0, flex: 1 }}>
                       <div
                         style={{
-                          width: 36,
-                          height: 36,
+                          width: 34,
+                          height: 34,
                           borderRadius: 12,
                           background: "rgba(255, 255, 255, 0.25)",
                           display: "flex",
@@ -482,36 +487,38 @@ export function RequirementBuilderView({
                           flexShrink: 0,
                         }}
                       >
-                        {renderIcon(block.iconName, 20)}
+                        {renderIcon(block.iconName, 18)}
                       </div>
-                      <div>
-                        <div style={{ fontSize: "1rem", fontWeight: 900, lineHeight: 1.2 }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: "0.95rem", fontWeight: 900, lineHeight: 1.2, wordBreak: "break-word" }}>
                           {block.title}
                         </div>
-                        <small style={{ fontSize: "0.76rem", opacity: 0.9, fontWeight: 700 }}>
+                        <small style={{ fontSize: "0.74rem", opacity: 0.9, fontWeight: 700, display: "block" }}>
                           {block.subtitle}
                         </small>
                       </div>
                     </div>
 
                     {/* Right Controls */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                    <div className="canvasStackControls" style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
                       {block.alreadyInWallet && (
                         <span
                           style={{
-                            fontSize: "0.7rem",
+                            fontSize: "0.68rem",
                             background: "rgba(255,255,255,0.25)",
-                            padding: "0.2rem 0.6rem",
+                            padding: "0.2rem 0.55rem",
                             borderRadius: 9999,
                             fontWeight: 800,
+                            whiteSpace: "nowrap",
                           }}
                         >
-                          ✓ eGov Wallet Auto-Verified
+                          ✓ Auto-Verified
                         </span>
                       )}
                       <button
                         onClick={() => moveBlock(index, "up")}
                         disabled={isFirst}
+                        aria-label="Move block up"
                         style={{
                           background: "rgba(255,255,255,0.2)",
                           border: "none",
@@ -531,6 +538,7 @@ export function RequirementBuilderView({
                       <button
                         onClick={() => moveBlock(index, "down")}
                         disabled={isLast}
+                        aria-label="Move block down"
                         style={{
                           background: "rgba(255,255,255,0.2)",
                           border: "none",
@@ -549,6 +557,7 @@ export function RequirementBuilderView({
                       </button>
                       <button
                         onClick={() => removeBlock(index)}
+                        aria-label="Remove block"
                         style={{
                           background: "rgba(239, 68, 68, 0.85)",
                           border: "none",
@@ -585,6 +594,7 @@ export function RequirementBuilderView({
               display: "flex",
               flexDirection: "column",
               gap: "1rem",
+              margin: 0,
             }}
           >
             <div
@@ -595,7 +605,7 @@ export function RequirementBuilderView({
                 letterSpacing: "0.08em",
               }}
             >
-              WHAT THE CITIZEN WILL SEE
+              CITIZEN CHECKLIST PREVIEW
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -619,16 +629,16 @@ export function RequirementBuilderView({
                       background: block.alreadyInWallet ? "#f0fdf4" : "#fafafa",
                       border: block.alreadyInWallet ? "2px solid #86efac" : "2px solid #e2e8f0",
                       borderRadius: 16,
-                      padding: "0.85rem 1rem",
+                      padding: "0.75rem 0.9rem",
                       display: "flex",
                       alignItems: "center",
-                      gap: "0.85rem",
+                      gap: "0.75rem",
                     }}
                   >
                     <div
                       style={{
-                        width: 34,
-                        height: 34,
+                        width: 32,
+                        height: 32,
                         borderRadius: 10,
                         background: block.alreadyInWallet ? "#dcfce7" : "#f1f5f9",
                         color: block.alreadyInWallet ? "#166534" : "#475569",
@@ -638,23 +648,23 @@ export function RequirementBuilderView({
                         flexShrink: 0,
                       }}
                     >
-                      {renderIcon(block.iconName, 18)}
+                      {renderIcon(block.iconName, 16)}
                     </div>
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <b style={{ fontSize: "0.9rem", color: "#1e1b4b", display: "block", lineHeight: 1.2 }}>
+                      <b style={{ fontSize: "0.88rem", color: "#1e1b4b", display: "block", lineHeight: 1.2 }}>
                         {block.title}
                       </b>
                       {block.alreadyInWallet ? (
                         <small style={{ color: "#166534", fontWeight: 800, fontSize: "0.72rem" }}>
-                          ✓ already in wallet
+                          ✓ verified in wallet
                         </small>
                       ) : (
                         <small style={{ color: "#94a3b8", fontWeight: 700, fontSize: "0.72rem" }}>
-                          to provide
+                          upload required
                         </small>
                       )}
                     </div>
-                    {block.alreadyInWallet && <CheckCircle2 size={18} color="#16a34a" />}
+                    {block.alreadyInWallet && <CheckCircle2 size={18} color="#16a34a" style={{ flexShrink: 0 }} />}
                   </div>
                 ))
               )}
@@ -666,12 +676,12 @@ export function RequirementBuilderView({
                 color: "#64748b",
                 fontWeight: 700,
                 lineHeight: 1.4,
-                marginTop: "0.5rem",
+                marginTop: "0.25rem",
                 paddingTop: "0.75rem",
                 borderTop: "2px dashed #e2e8f0",
               }}
             >
-              Already-verified papers auto-cross-off. The rest becomes the citizen's checklist.
+              Verified credentials auto-cross-off in citizen's portal.
             </div>
           </div>
         </div>

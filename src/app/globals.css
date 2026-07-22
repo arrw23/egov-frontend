@@ -997,3 +997,23 @@ input, select, textarea {
   transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+@media (max-width: 640px) {
+  .canvasStackBlock {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+  }
+  .canvasStackControls {
+    width: 100%;
+    justify-content: flex-end;
+    border-top: 1px dashed rgba(255, 255, 255, 0.3);
+    padding-top: 0.5rem;
+  }
+  .builderCanvas {
+    padding: 1rem;
+    min-height: auto;
+  }
+}
+
+

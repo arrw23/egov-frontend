@@ -137,17 +137,6 @@ export function DashboardView({
           </div>
         </aside>
       </div>
-
-      <div className="apis">
-        <b style={{ width: "100%", display: "flex", alignItems: "center", gap: "0.5rem", color: "#1e1b4b", marginBottom: "0.25rem" }}>
-          <ShieldCheck size={20} color="#1e1b4b" /> eGovPH API Services:
-        </b>
-        {["eGov SSO", "eVerify", "eMessage", "eGovChain", "eGov AI"].map((x) => (
-          <span key={x}>
-            <Check size={14} /> {x}
-          </span>
-        ))}
-      </div>
     </>
   );
 }
