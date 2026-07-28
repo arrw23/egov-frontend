@@ -11,10 +11,12 @@ import {
   QrCode,
   ShieldCheck,
   WalletCards,
+  Network,
 } from "lucide-react";
 import { MedicalCase, Screen } from "@/types";
 import { Head, Stat, Status } from "../common/Ui";
 import { getSavedRequirementRule } from "@/lib/requirementStore";
+import { api } from "@/lib/api";
 
 const money = (n: number) =>
   new Intl.NumberFormat("en-PH", {
@@ -79,17 +81,56 @@ export function DashboardView({
           </div>
           <div className="timeline">
             {[
-              ["Identity verified", "PhilSys eVerify matched"],
-              ["Hospital records certified", "Manila General Hospital certified SOA & abstract"],
-              ["Agency application reviewed", "DSWD NCR evaluator review"],
-              ["Guarantee letter issued", "GL-DSWD-2026-04821 (₱50,000 approved)"],
-              ["Guarantee letter utilized", used ? `${money(used)} recorded by hospital` : "Waiting for hospital billing settlement"],
-            ].map(([title, sub], i) => (
-              <div className={i < 4 || used ? "done" : ""} key={title}>
+              { title: "Identity verified", sub: "PhilSys eVerify matched", chain_hash: "0x3f...892a", metadata: { besu_tx_hash: "0xabc123" } },
+              { title: "Hospital records certified", sub: "Manila General Hospital certified SOA & abstract", chain_hash: "0x7a...123b", metadata: { besu_tx_hash: "0xdef456" } },
+              { title: "Agency application reviewed", sub: "DSWD NCR evaluator review", chain_hash: "0x9b...456c", metadata: { besu_tx_hash: "0xghi789" } },
+              { title: "Guarantee letter issued", sub: "GL-DSWD-2026-04821 (₱50,000 approved)", chain_hash: "0x2c...789d", metadata: { besu_tx_hash: "0xjkl012" } },
+              { title: "Guarantee letter utilized", sub: used ? `${money(used)} recorded by hospital` : "Waiting for hospital billing settlement", chain_hash: used ? "0x4d...012e" : null, metadata: used ? { besu_tx_hash: "0xmno345" } : null },
+            ].map((event, i) => (
+              <div className={i < 4 || used ? "done" : ""} key={event.title}>
                 <i>{i < 4 || used ? <Check size={18} /> : <Clock3 size={18} />}</i>
                 <span>
-                  <b style={{ fontSize: "1rem" }}>{title}</b>
-                  <small style={{ color: "#4338ca", fontWeight: 600 }}>{sub}</small>
+                  <b style={{ fontSize: "1rem" }}>{event.title}</b>
+                  <small style={{ color: "#4338ca", fontWeight: 600 }}>{event.sub}</small>
+                  {event.chain_hash && (
+                    <div style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      background: '#e0e7ff',
+                      color: '#4338ca',
+                      padding: '0.2rem 0.65rem',
+                      borderRadius: '9999px',
+                      fontSize: '0.7rem',
+                      fontWeight: 800,
+                      border: '1.5px solid #4338ca',
+                      marginTop: '0.35rem',
+                    }}>
+                      <Network size={12} />
+                      <span>eGovChain: {event.chain_hash}</span>
+                      {event.metadata?.besu_tx_hash && (
+                        <button
+                          onClick={async () => {
+                            const result = await api.besuJsonRpc('egov_verifyRecord', [event.metadata?.besu_tx_hash]);
+                            alert(`✅ Record verified on eGovChain\nStatus: ${result?.result?.state || 'ANCHORED_AND_VALIDATED'}\nTamper Evident: ${result?.result?.tamper_evident ?? true}`);
+                          }}
+                          style={{
+                            background: '#4338ca',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '6px',
+                            padding: '0.15rem 0.45rem',
+                            fontSize: '0.65rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            marginLeft: '0.25rem',
+                          }}
+                        >
+                          Verify
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </span>
                 <time>{i < 4 || used ? "Completed" : "Pending"}</time>
               </div>

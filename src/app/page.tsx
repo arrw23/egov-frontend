@@ -16,6 +16,7 @@ import { GuaranteeView, ValidateView } from "@/components/screens/GuaranteeView"
 import { VerifiedCatalogView } from "@/components/screens/VerifiedCatalogView";
 import { EGovIntegrationHub } from "@/components/screens/EGovIntegrationHub";
 import { RequirementBuilderView } from "@/components/screens/RequirementBuilderView";
+import { ChatbotWidget } from "@/components/screens/ChatbotWidget";
 
 export default function Home() {
   const [role, setRole] = useState<Role>("applicant");
@@ -153,6 +154,8 @@ export default function Home() {
       {isDrawerOpen && (
         <MobileDrawer role={role} screen={screen} go={go} onClose={() => setIsDrawerOpen(false)} />
       )}
+
+      {role && <ChatbotWidget role={role} activeCase={activeCase} />}
 
       {toast && (
         <div className="toast">

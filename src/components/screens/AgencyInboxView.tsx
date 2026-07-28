@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ArrowRight,
   ArrowUpDown,
@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Screen } from "@/types";
 import { Head, Stat, Status } from "../common/Ui";
+import { api } from "@/lib/api";
 
 interface PendingServiceRequest {
   id: string;
@@ -129,6 +130,12 @@ export function AgencyInboxView({
   go: (s: Screen) => void;
   notify?: (s: string) => void;
 }) {
+  const [budget, setBudget] = useState<any>(null);
+
+  useEffect(() => {
+    api.getCompassBudget('DSWD-AICS').then(data => setBudget(data)).catch(() => {});
+  }, []);
+
   const [sortOption, setSortOption] = useState<"completeness_desc" | "completeness_asc" | "requested_desc" | "recent">("completeness_desc");
   const [filterCategory, setFilterCategory] = useState<"all" | "ready" | "partial" | "incomplete">("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -247,19 +254,19 @@ export function AgencyInboxView({
             <span style={{ fontSize: "0.75rem", color: "#6366f1", display: "block" }}>
               Total Allocated Fund
             </span>
-            <b style={{ fontSize: "1.25rem", color: "#1e1b4b" }}>₱20,000,000.00</b>
+            <b style={{ fontSize: "1.25rem", color: "#1e1b4b" }}>{budget ? `₱${(budget.total_allocation / 1000000).toFixed(1)}M` : '₱20,000,000.00'}</b>
           </div>
           <div>
             <span style={{ fontSize: "0.75rem", color: "#6366f1", display: "block" }}>
               Committed / Disbursed
             </span>
-            <b style={{ fontSize: "1.25rem", color: "#d97706" }}>₱5,200,000.00 (26%)</b>
+            <b style={{ fontSize: "1.25rem", color: "#d97706" }}>{budget ? `₱${(budget.utilized_amount / 1000000).toFixed(1)}M (${((budget.utilized_amount / budget.total_allocation) * 100).toFixed(0)}%)` : '₱5,200,000.00 (26%)'}</b>
           </div>
           <div>
             <span style={{ fontSize: "0.75rem", color: "#6366f1", display: "block" }}>
               Available Help Fund Balance
             </span>
-            <b style={{ fontSize: "1.25rem", color: "#059669" }}>₱14,800,000.00 (74%)</b>
+            <b style={{ fontSize: "1.25rem", color: "#059669" }}>{budget ? `₱${(budget.remaining_balance / 1000000).toFixed(1)}M (${((budget.remaining_balance / budget.total_allocation) * 100).toFixed(0)}%)` : '₱14,800,000.00 (74%)'}</b>
           </div>
         </div>
       </div>
