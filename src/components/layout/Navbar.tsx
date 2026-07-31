@@ -14,6 +14,7 @@ import {
   UploadCloud,
   Users,
   WalletCards,
+  Layers,
   X,
 } from "lucide-react";
 import { Role, Screen } from "@/types";
@@ -27,6 +28,7 @@ export const navItems: Record<Role, [Screen, string, any][]> = {
     ["catalog", "Verified Inventory", BadgeCheck],
     ["submit", "Provider & Agency", Building2],
     ["guarantee", "Digital Guarantee", WalletCards],
+    ["audit_logs", "eReport Audit Logs", Layers],
     ["egov_hub", "System Testing Hub", Network],
   ],
   hospital_staff: [
@@ -34,6 +36,7 @@ export const navItems: Record<Role, [Screen, string, any][]> = {
     ["hospital_detail", "Submit & Certify", FileCheck2],
     ["catalog", "Verified Inventory", BadgeCheck],
     ["validate", "Validate Guarantee", ScanLine],
+    ["audit_logs", "eReport Audit Logs", Layers],
     ["egov_hub", "System Testing Hub", Network],
   ],
   agency_evaluator: [
@@ -42,6 +45,7 @@ export const navItems: Record<Role, [Screen, string, any][]> = {
     ["agency_review", "Case Review", ShieldCheck],
     ["catalog", "Verified Inventory", BadgeCheck],
     ["guarantee", "Issued Guarantee", WalletCards],
+    ["audit_logs", "eReport Audit Logs", Layers],
     ["egov_hub", "System Testing Hub", Network],
   ],
 };

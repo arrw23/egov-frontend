@@ -16,6 +16,7 @@ import { GuaranteeView, ValidateView } from "@/components/screens/GuaranteeView"
 import { VerifiedCatalogView } from "@/components/screens/VerifiedCatalogView";
 import { EGovIntegrationHub } from "@/components/screens/EGovIntegrationHub";
 import { RequirementBuilderView } from "@/components/screens/RequirementBuilderView";
+import { AuditLogsView } from "@/components/screens/AuditLogsView";
 import { ChatbotWidget } from "@/components/screens/ChatbotWidget";
 
 export default function Home() {
@@ -144,6 +145,7 @@ export default function Home() {
             />
           )}
           {screen === "egov_hub" && <EGovIntegrationHub />}
+          {screen === "audit_logs" && <AuditLogsView go={go} />}
         </div>
       </main>
 

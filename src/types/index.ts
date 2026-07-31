@@ -15,7 +15,8 @@ export type Screen =
   | 'guarantee'
   | 'validate'
   | 'egov_hub'
-  | 'builder';
+  | 'builder'
+  | 'audit_logs';
 
 export interface User {
   id: number;
