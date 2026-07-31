@@ -90,7 +90,7 @@ export interface CaseDocument {
   title: string;
   storage_path: string;
   file_size: number;
-  status: 'uploaded' | 'processing' | 'certified' | 'verified' | 'rejected';
+  status: 'uploaded' | 'processing' | 'certified' | 'verified' | 'rejected' | 'hashed' | 'pending_hospital_verification';
   sha256_hash?: string;
   verification_reference?: string;
   extracted_json?: any;

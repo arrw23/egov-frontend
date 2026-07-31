@@ -480,9 +480,9 @@ export const api = {
         title: title,
         storage_path: `cases/${caseId}/${docType}.pdf`,
         file_size: file ? file.size : 142000,
-        status: 'verified',
+        status: 'hashed',
         sha256_hash: `DOC-HASH-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-        verification_reference: `VER-DOC-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
+        verification_reference: `HSH-DOC-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
         extracted_json: {
           blockchain_tx_hash: `0x${Math.random().toString(16).substring(2)}${Math.random().toString(16).substring(2)}`.substring(0, 42),
           blockchain_block_number: `0x${(1849200 + Math.floor(Math.random() * 100)).toString(16)}`,
@@ -490,6 +490,27 @@ export const api = {
           full_sha256: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`,
           anchored_at: new Date().toISOString(),
         }
+      }
+    }));
+  },
+
+  async certifyDocument(docId: number): Promise<{ status: string; message: string; document: CaseDocument }> {
+    return request<{ status: string; message: string; document: CaseDocument }>(`/documents/${docId}/certify`, {
+      method: 'POST',
+    }, false, () => ({
+      status: "success",
+      message: "Document verified & certified successfully by hospital staff.",
+      document: {
+        id: docId,
+        medical_case_id: 1,
+        document_type: 'medical_record',
+        title: 'Verified Hospital Document',
+        storage_path: `cases/1/certified_doc.pdf`,
+        file_size: 152000,
+        status: 'certified',
+        sha256_hash: `HSP-CERT-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
+        verification_reference: `HSP-REF-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
+        extracted_json: {},
       }
     }));
   },

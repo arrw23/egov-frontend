@@ -120,25 +120,47 @@ export function BlockchainProofModal({
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             {/* Status Alert Banner */}
-            <div style={{
-              background: "#f0fdf4",
-              border: "2px solid #22c55e",
-              borderRadius: 16,
-              padding: "1rem 1.25rem",
-              display: "flex",
-              alignItems: "center",
-              gap: "0.75rem",
-            }}>
-              <CheckCircle2 size={24} color="#16a34a" style={{ flexShrink: 0 }} />
-              <div>
-                <b style={{ fontSize: "0.95rem", color: "#14532d", display: "block" }}>
-                  DOCUMENT AUTHENTICITY VERIFIED
-                </b>
-                <span style={{ fontSize: "0.8rem", color: "#15803d", fontWeight: 600 }}>
-                  Cryptographic SHA-256 match confirmed. Immutable state recorded on government nodes.
-                </span>
+            {((doc.status === "hashed" || doc.status === "pending_hospital_verification" || doc.status === "uploaded") && proofData?.document?.status !== "certified" && proofData?.document?.status !== "verified") ? (
+              <div style={{
+                background: "#eff6ff",
+                border: "2px solid #3b82f6",
+                borderRadius: 16,
+                padding: "1rem 1.25rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.75rem",
+              }}>
+                <Hash size={24} color="#2563eb" style={{ flexShrink: 0 }} />
+                <div>
+                  <b style={{ fontSize: "0.95rem", color: "#1e3a8a", display: "block" }}>
+                    BLOCKCHAIN HASH ANCHORED · AWAITING HOSPITAL VERIFICATION
+                  </b>
+                  <span style={{ fontSize: "0.8rem", color: "#1d4ed8", fontWeight: 600 }}>
+                    Cryptographic SHA-256 digest anchored to eGovChain ledger. Hospital staff review required for official certification.
+                  </span>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div style={{
+                background: "#f0fdf4",
+                border: "2px solid #22c55e",
+                borderRadius: 16,
+                padding: "1rem 1.25rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.75rem",
+              }}>
+                <CheckCircle2 size={24} color="#16a34a" style={{ flexShrink: 0 }} />
+                <div>
+                  <b style={{ fontSize: "0.95rem", color: "#14532d", display: "block" }}>
+                    DOCUMENT AUTHENTICITY CERTIFIED
+                  </b>
+                  <span style={{ fontSize: "0.8rem", color: "#15803d", fontWeight: 600 }}>
+                    Cryptographic SHA-256 match confirmed. Certified by hospital staff & recorded on government nodes.
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Document Info */}
             <div style={{ background: "#f8fafc", border: "2px solid #e2e8f0", borderRadius: 16, padding: "1rem 1.25rem" }}>

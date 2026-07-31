@@ -51,14 +51,14 @@ export function DocumentUploadView({
 
     try {
       const res = await api.uploadDocument(caseId, blockId, blockTitle, file);
-      notify(`Uploaded "${blockTitle}"! Cryptographic SHA-256 hash anchored to eGovChain.`);
+      notify(`Uploaded "${blockTitle}"! Cryptographic SHA-256 hash anchored to eGovChain. Hospital verification pending.`);
 
       setUploadedMap((prev) => ({
         ...prev,
         [blockId]: res.document,
       }));
     } catch (err: any) {
-      notify(`Uploaded "${blockTitle}" & anchored to eGovChain blockchain!`);
+      notify(`Uploaded "${blockTitle}" & anchored to eGovChain! Awaiting hospital verification.`);
       // Fallback local document entry
       const fallbackDoc: Partial<CaseDocument> = {
         id: Date.now(),
@@ -67,9 +67,9 @@ export function DocumentUploadView({
         title: blockTitle,
         storage_path: `cases/${caseId}/${blockId}.pdf`,
         file_size: file ? file.size : 152000,
-        status: "verified",
+        status: "hashed",
         sha256_hash: `DOC-HASH-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-        verification_reference: `VER-DOC-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
+        verification_reference: `HSH-DOC-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
         extracted_json: {
           blockchain_tx_hash: `0x${Math.random().toString(16).substring(2)}${Math.random().toString(16).substring(2)}`.substring(0, 42),
           blockchain_block_number: "0x1c37b1",
@@ -128,6 +128,8 @@ export function DocumentUploadView({
             {rule.blocks.map((block) => {
               const uploadedDoc = uploadedMap[block.id];
               const isWalletVerified = block.alreadyInWallet;
+              const isHospitalCertified = uploadedDoc?.status === "certified" || uploadedDoc?.status === "verified";
+              const isHashedOnly = uploadedDoc && (uploadedDoc.status === "hashed" || uploadedDoc.status === "pending_hospital_verification" || uploadedDoc.status === "uploaded");
               const isUploaded = isWalletVerified || !!uploadedDoc;
               const isUploadingThis = uploadingBlockId === block.id;
 
@@ -141,7 +143,7 @@ export function DocumentUploadView({
                     padding: "1.2rem 1.35rem",
                     border: "2.5px solid #1e1b4b",
                     borderRadius: 22,
-                    background: isUploaded ? "#f0fdf4" : "#ffffff",
+                    background: isHospitalCertified || isWalletVerified ? "#f0fdf4" : isHashedOnly ? "#eff6ff" : "#ffffff",
                     boxShadow: "0 4px 0 #1e1b4b",
                     display: "flex",
                     flexDirection: "column",
@@ -153,27 +155,27 @@ export function DocumentUploadView({
                       <div
                         style={{
                           padding: "0.6rem",
-                          background: isUploaded ? "#dcfce7" : "#e0e7ff",
+                          background: isHospitalCertified || isWalletVerified ? "#dcfce7" : isHashedOnly ? "#dbeafe" : "#e0e7ff",
                           borderRadius: 14,
-                          border: `2px solid ${isUploaded ? "#166534" : "#3730a3"}`,
+                          border: `2px solid ${isHospitalCertified || isWalletVerified ? "#166534" : isHashedOnly ? "#1d4ed8" : "#3730a3"}`,
                         }}
                       >
-                        <FileText size={22} color={isUploaded ? "#15803d" : "#3730a3"} />
+                        <FileText size={22} color={isHospitalCertified || isWalletVerified ? "#15803d" : isHashedOnly ? "#1e40af" : "#3730a3"} />
                       </div>
                       <div>
                         <b style={{ fontSize: "1.05rem", fontWeight: 900, color: "#0f172a" }}>
                           {block.title}
                         </b>
-                        <span style={{ display: "block", fontSize: "0.825rem", color: isUploaded ? "#166534" : "#4338ca", fontWeight: 700, marginTop: "0.15rem" }}>
-                          {block.subtitle} · {isWalletVerified ? "Auto-Verified via PhilSys / eGov Wallet" : isUploaded ? "Uploaded & Cryptographically Hashed" : "Required — Action Needed"}
+                        <span style={{ display: "block", fontSize: "0.825rem", color: isHospitalCertified || isWalletVerified ? "#166534" : isHashedOnly ? "#1e40af" : "#4338ca", fontWeight: 700, marginTop: "0.15rem" }}>
+                          {block.subtitle} · {isWalletVerified ? "Auto-Verified via PhilSys / eGov Wallet" : isHospitalCertified ? "Verified & Certified by Hospital Staff" : isHashedOnly ? "Uploaded & Blockchain Hashed (Pending Hospital Verification)" : "Required — Action Needed"}
                         </span>
                       </div>
                     </div>
 
                     <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                       {isUploaded ? (
-                        <Status tone="green">
-                          {isWalletVerified ? "Wallet Auto-Verified" : "Uploaded & Verified"}
+                        <Status tone={isWalletVerified || isHospitalCertified ? "green" : "blue"}>
+                          {isWalletVerified ? "Wallet Auto-Verified" : isHospitalCertified ? "Hospital Verified" : "Hashed (Awaiting Hospital Verification)"}
                         </Status>
                       ) : (
                         <>
@@ -211,7 +213,7 @@ export function DocumentUploadView({
                       background: "#ffffff",
                       padding: "0.65rem 0.85rem",
                       borderRadius: 14,
-                      border: "1.5px solid #bbf7d0",
+                      border: `1.5px solid ${isHospitalCertified || isWalletVerified ? "#bbf7d0" : "#bfdbfe"}`,
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "center",
@@ -220,10 +222,10 @@ export function DocumentUploadView({
                       fontSize: "0.775rem",
                     }}>
                       <div>
-                        <span style={{ color: "#166534", fontWeight: 700 }}>Ref: </span>
+                        <span style={{ color: isHospitalCertified || isWalletVerified ? "#166534" : "#1e40af", fontWeight: 700 }}>Ref: </span>
                         <b style={{ color: "#1e1b4b", marginRight: "0.75rem" }}>{refNum}</b>
                         <span style={{ color: "#64748b", fontWeight: 700 }}>SHA-256 Digest: </span>
-                        <code style={{ color: "#15803d", fontWeight: 900, fontFamily: "monospace" }}>
+                        <code style={{ color: isHospitalCertified || isWalletVerified ? "#15803d" : "#2563eb", fontWeight: 900, fontFamily: "monospace" }}>
                           {docHash}
                         </code>
                       </div>
@@ -235,7 +237,7 @@ export function DocumentUploadView({
                               id: Date.now(),
                               title: block.title,
                               document_type: block.id,
-                              status: "verified",
+                              status: isWalletVerified ? "verified" : "hashed",
                               sha256_hash: docHash || "DOC-HASH-99A1F2C84B",
                               verification_reference: refNum || "EVR-8F2A-19C0-2026",
                               extracted_json: {

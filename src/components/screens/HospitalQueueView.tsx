@@ -91,8 +91,21 @@ export function HospitalDetailView({
   const [docTitle, setDocTitle] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
-  // Default records list
+  // Default records list (including hospital records and citizen-uploaded hashed documents)
   const [records, setRecords] = useState<any[]>([
+    {
+      id: 200,
+      type: "indigency",
+      title: "Barangay Certificate of Indigency (Uploaded by Citizen)",
+      sub: "Citizen upload · Cryptographic hash anchored to eGovChain (Awaiting Hospital Verification)",
+      status: "hashed",
+      ref: "HSH-DOC-8B7C6D5E",
+      hash: "DOC-HASH-8B7C6D5E4F3A",
+      fullSha256: "8b7c6d5e4f3a9920192837410293847102938471029384710293847102938471",
+      besuTx: "0x8b7c6d5e4f3a9920192837410293847102938471",
+      block: "0x1c37b0",
+      uploadedByCitizen: true,
+    },
     {
       id: 201,
       type: "statement_of_account",
@@ -130,6 +143,16 @@ export function HospitalDetailView({
       block: "0x1c37b5",
     },
   ]);
+
+  const handleVerifySingleRecord = async (recId: number) => {
+    try {
+      await api.certifyDocument(recId);
+    } catch (e) {}
+    setRecords((prev) =>
+      prev.map((r) => (r.id === recId ? { ...r, status: "certified" } : r))
+    );
+    notify("Document verified and certified on eGovChain by Dr. Ana Reyes!");
+  };
 
   const handleUploadAndCertify = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -186,7 +209,7 @@ export function HospitalDetailView({
         {/* Main Column: Records List & Batch Action */}
         <section className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem", flexWrap: "wrap", gap: "0.5rem" }}>
-            <h2 style={{ fontSize: "1.35rem", fontWeight: 900, margin: 0 }}>Official Provider Records</h2>
+            <h2 style={{ fontSize: "1.35rem", fontWeight: 900, margin: 0 }}>Official Provider Records & Verification</h2>
             <button
               className="primary"
               disabled={certified}
@@ -208,20 +231,42 @@ export function HospitalDetailView({
                   padding: "1.1rem 1.25rem",
                   border: "2.5px solid #1e1b4b",
                   borderRadius: 20,
-                  background: rec.status === "certified" ? "#f0fdf4" : "#ffffff",
+                  background: rec.status === "certified" || certified ? "#f0fdf4" : rec.status === "hashed" ? "#eff6ff" : "#ffffff",
                   boxShadow: "0 4px 0 #1e1b4b",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem" }}>
                   <div>
                     <b style={{ fontSize: "1.05rem", fontWeight: 900, color: "#0f172a" }}>{rec.title}</b>
-                    <small style={{ display: "block", color: "#4338ca", fontWeight: 600, marginTop: "0.15rem" }}>
+                    <small style={{ display: "block", color: rec.status === "hashed" ? "#1e40af" : "#4338ca", fontWeight: 600, marginTop: "0.15rem" }}>
                       {rec.sub} · Ref: {rec.ref}
                     </small>
                   </div>
-                  <Status tone={rec.status === "certified" || certified ? "green" : "orange"}>
-                    {rec.status === "certified" || certified ? "Blockchain Certified" : "Pending Certification"}
-                  </Status>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <Status tone={rec.status === "certified" || certified ? "green" : rec.status === "hashed" ? "blue" : "orange"}>
+                      {rec.status === "certified" || certified ? "Hospital Certified" : rec.status === "hashed" ? "Citizen Upload (Hashed)" : "Pending Certification"}
+                    </Status>
+                    {rec.status === "hashed" && !certified && (
+                      <button
+                        onClick={() => handleVerifySingleRecord(rec.id)}
+                        style={{
+                          padding: "0.35rem 0.75rem",
+                          background: "#059669",
+                          color: "#ffffff",
+                          border: "1.5px solid #047857",
+                          borderRadius: 10,
+                          fontWeight: 800,
+                          fontSize: "0.75rem",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.3rem",
+                        }}
+                      >
+                        <ShieldCheck size={13} /> Verify & Certify
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* SHA-256 Hash & Verification Row */}
@@ -249,7 +294,7 @@ export function HospitalDetailView({
                         id: rec.id,
                         title: rec.title,
                         document_type: rec.type,
-                        status: "certified",
+                        status: rec.status === "certified" || certified ? "certified" : rec.status,
                         sha256_hash: rec.hash,
                         verification_reference: rec.ref,
                         extracted_json: {

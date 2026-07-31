@@ -115,18 +115,21 @@ export function ApplyWizardView({
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1.75rem" }}>
             {serviceRule.blocks.map((block) => {
               const isUploaded = block.alreadyInWallet || uploadedFiles[block.id];
+              const isWallet = block.alreadyInWallet;
               return (
-                <div key={block.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "1rem 1.25rem", border: "2.5px solid #1e1b4b", borderRadius: 20, background: isUploaded ? "#f0fdf4" : "#ffffff", boxShadow: "0 4px 0 #1e1b4b", flexWrap: "wrap", gap: "0.5rem" }}>
+                <div key={block.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "1rem 1.25rem", border: "2.5px solid #1e1b4b", borderRadius: 20, background: isWallet ? "#f0fdf4" : isUploaded ? "#eff6ff" : "#ffffff", boxShadow: "0 4px 0 #1e1b4b", flexWrap: "wrap", gap: "0.5rem" }}>
                   <div>
                     <b style={{ fontSize: "1rem", fontWeight: 900, color: "#1e1b4b" }}>{block.title}</b>
-                    <small style={{ display: "block", color: isUploaded ? "#166534" : "#4338ca", fontWeight: 700 }}>
-                      {block.subtitle} {block.alreadyInWallet ? "· Auto-verified via PhilSys / eGov Wallet" : isUploaded ? "· SHA-256 Anchored to eGovChain" : "· Required document"}
+                    <small style={{ display: "block", color: isWallet ? "#166534" : isUploaded ? "#1e40af" : "#4338ca", fontWeight: 700 }}>
+                      {block.subtitle} {isWallet ? "· Auto-verified via PhilSys / eGov Wallet" : isUploaded ? "· SHA-256 Anchored (Pending Hospital Verification)" : "· Required document"}
                     </small>
                   </div>
 
                   <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                     {isUploaded ? (
-                      <Status tone="green">eGovChain Verified</Status>
+                      <Status tone={isWallet ? "green" : "blue"}>
+                        {isWallet ? "Wallet Auto-Verified" : "Hashed (Awaiting Hospital Verification)"}
+                      </Status>
                     ) : (
                       <>
                         <input
