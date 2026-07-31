@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { BadgeCheck, CheckCircle2, ShieldCheck, Loader2, ArrowRight, LockKeyhole } from "lucide-react";
+import { BadgeCheck, CheckCircle2, ShieldCheck, Loader2, ArrowRight, LockKeyhole, AlertTriangle } from "lucide-react";
 import { Brand } from "@/components/common/Brand";
 import { api } from "@/lib/api";
 
@@ -19,8 +19,10 @@ function SSOContent() {
   const [phone, setPhone] = useState("");
   const [birthdate, setBirthdate] = useState("");
   const [address, setAddress] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
 
   const fillDemoData = () => {
+    setErrorMsg("");
     setName("JOSIE SANTOS DELA CRUZ");
     setUniqid("MVPCBEUVCGPZR");
     setPcn("9639954762664080");
@@ -32,18 +34,31 @@ function SSOContent() {
 
   const handleAuthenticate = async (e: React.FormEvent) => {
     e.preventDefault();
-    setStep("verifying");
+    setErrorMsg("");
 
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = name.trim().toUpperCase();
+    const cleanPcn = pcn.replace(/\D/g, "");
     const cleanPhone = phone.replace(/\D/g, "").replace(/^0/, "");
-    const formattedPhone = cleanPhone
-      ? `+63 ${cleanPhone.replace(/(\d{3})(\d{3})(\d{4})/, "$1 $2 $3")}`
-      : "+63 909 000 0000";
+
+    const isValidEmail = cleanEmail === "josie@yopmail.com";
+    const isValidName = cleanName.includes("JOSIE") && (cleanName.includes("DELA CRUZ") || cleanName.includes("CRUZ"));
+    const isValidPcn = cleanPcn === "9639954762664080";
+    const isValidPhone = cleanPhone === "9090000000";
+
+    if (!isValidEmail || !isValidName || !isValidPcn || !isValidPhone) {
+      setErrorMsg("Authentication Rejected: Invalid eGovPH Citizen Credentials. Credentials do not match any verified citizen in the eGovPH Registry.");
+      return;
+    }
+
+    setStep("verifying");
+    const formattedPhone = `+63 ${cleanPhone.replace(/(\d{3})(\d{3})(\d{4})/, "$1 $2 $3")}`;
 
     const userInfo = { 
-      name: name || "JOSIE SANTOS DELA CRUZ", 
-      uniqid: uniqid || "MVPCBEUVCGPZR", 
-      pcn: pcn || "9639954762664080", 
-      email: email || "josie@yopmail.com", 
+      name, 
+      uniqid, 
+      pcn, 
+      email, 
       phone: formattedPhone, 
       birthdate: birthdate || "1990-01-01", 
       address: address || "1123 RIZAL ST., POBLACION, CITY OF ALAMINOS, PANGASINAN", 
@@ -163,8 +178,14 @@ function SSOContent() {
                 </div>
               </div>
 
+              {errorMsg && (
+                <div style={{ background: "#fef2f2", border: "2px solid #ef4444", borderRadius: 14, padding: "0.75rem 1rem", color: "#991b1b", fontSize: "0.82rem", fontWeight: 800, display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                  <AlertTriangle size={18} color="#dc2626" style={{ flexShrink: 0 }} /> {errorMsg}
+                </div>
+              )}
+
               <div style={{ background: "#f5f3ff", padding: "0.75rem 1rem", borderRadius: 14, border: "1.5px solid #1e1b4b", fontSize: "0.78rem", color: "#4338ca", fontWeight: 700 }}>
-                💡 <b>Manual Authentication:</b> Enter citizen details above to authenticate via eGovPH Single Sign-On.
+                💡 <b>Manual Authentication:</b> Enter registered citizen details above to authenticate via eGovPH Single Sign-On.
               </div>
 
               <button className="primary wide" type="submit" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.6rem", padding: "0.85rem 1.25rem", fontSize: "0.95rem", marginTop: "0.5rem" }}>
