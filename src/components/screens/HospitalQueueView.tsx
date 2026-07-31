@@ -147,6 +147,8 @@ export function HospitalDetailView({
   const handleVerifySingleRecord = async (recId: number) => {
     try {
       await api.certifyDocument(recId);
+      await api.sendEMessage("Official Record Certified", "Hospital staff Dr. Ana Reyes verified & certified citizen medical document.");
+      await api.submitEReport("HOSPITAL_DOCUMENT_CERTIFIED", { record_id: recId });
     } catch (e) {}
     setRecords((prev) =>
       prev.map((r) => (r.id === recId ? { ...r, status: "certified" } : r))
@@ -161,6 +163,10 @@ export function HospitalDetailView({
     setUploading(true);
     try {
       const res = await api.uploadHospitalDocument(1, docType, titleToUse, selectedFile || undefined);
+      try {
+        await api.sendEMessage("Hospital Record Uploaded", `Official hospital record "${titleToUse}" uploaded & certified.`);
+        await api.submitEReport("HOSPITAL_RECORD_UPLOADED", { doc_type: docType, title: titleToUse });
+      } catch (e) {}
       notify("Official medical record uploaded, certified, and anchored to eGovChain!");
 
       const meta = (res.document.extracted_json as any) || {};

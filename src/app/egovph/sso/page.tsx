@@ -30,6 +30,10 @@ function SSOContent() {
     }
 
     try {
+      const tokenRes = await api.ssoToken(exchangeCode);
+      if (tokenRes?.access_token) {
+        await api.ssoAuthentication(tokenRes.access_token);
+      }
       await api.mockLogin("applicant");
     } catch (err) {}
 

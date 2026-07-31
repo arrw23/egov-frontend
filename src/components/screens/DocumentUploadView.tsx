@@ -51,6 +51,10 @@ export function DocumentUploadView({
 
     try {
       const res = await api.uploadDocument(caseId, blockId, blockTitle, file);
+      try {
+        await api.sendEMessage("Document Uploaded", `Uploaded document "${blockTitle}" anchored to eGovChain.`);
+        await api.submitEReport("DOCUMENT_UPLOADED", { block_id: blockId, title: blockTitle });
+      } catch (e) {}
       notify(`Uploaded "${blockTitle}"! Cryptographic SHA-256 hash anchored to eGovChain. Hospital verification pending.`);
 
       setUploadedMap((prev) => ({

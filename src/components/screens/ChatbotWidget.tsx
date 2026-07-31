@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Send, X, MessageSquare, Scale, Languages, Sparkles, ChevronDown } from 'lucide-react';
+import { Bot, Send, X, MessageSquare, Scale, Languages, Sparkles, ChevronDown, Mic, Compass } from 'lucide-react';
 import { api } from '@/lib/api';
 
 interface ChatbotWidgetProps {
@@ -10,10 +10,10 @@ interface ChatbotWidgetProps {
 export function ChatbotWidget({ role, activeCase }: ChatbotWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<{role: 'user'|'assistant'; content: string; timestamp: Date}[]>([
-    { role: 'assistant', content: 'Magandang araw! I am your GabayMed AI Assistant. I can help you with medical assistance applications, Philippine laws & regulations, and language translation. How can I assist you today?', timestamp: new Date() }
+    { role: 'assistant', content: 'Magandang araw! I am your GabayMed AI Assistant. I can help you with medical assistance applications, Philippine laws & regulations, speech scripts, and tourism/hospital locality guides.', timestamp: new Date() }
   ]);
   const [input, setInput] = useState('');
-  const [mode, setMode] = useState<'assistant'|'laws'|'translate'>('assistant');
+  const [mode, setMode] = useState<'assistant'|'laws'|'translate'|'speech'|'tourism'>('assistant');
   const [isTyping, setIsTyping] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -41,6 +41,14 @@ export function ChatbotWidget({ role, activeCase }: ChatbotWidgetProps) {
           response = await api.translateText(text.trim(), 'en', 'fil');
           setMessages(prev => [...prev, { role: 'assistant', content: `**Translation (Filipino):**\n\n${response.translated_prompt || response.data}`, timestamp: new Date() }]);
           break;
+        case 'speech':
+          response = await api.generateSpeechMaker(text.trim(), 'PH');
+          setMessages(prev => [...prev, { role: 'assistant', content: `**Generated Speech Script:**\n\n${response.data}`, timestamp: new Date() }]);
+          break;
+        case 'tourism':
+          response = await api.generateTourism(text.trim(), 'PH');
+          setMessages(prev => [...prev, { role: 'assistant', content: `**Locality & Tourism Guide:**\n\n${response.data}`, timestamp: new Date() }]);
+          break;
         default:
           response = await api.generateAiAssistant(text.trim(), 'PH');
           setMessages(prev => [...prev, { role: 'assistant', content: response.data, timestamp: new Date() }]);
@@ -61,7 +69,9 @@ export function ChatbotWidget({ role, activeCase }: ChatbotWidgetProps) {
   const suggestions = [
     "How to apply for DSWD?",
     "What is RA 11032?",
-    "Translate to Filipino"
+    "Translate to Filipino",
+    "Medical Speech Script",
+    "Hospital Travel Guide"
   ];
 
   const handleSuggestionClick = (suggestion: string) => {
@@ -69,6 +79,10 @@ export function ChatbotWidget({ role, activeCase }: ChatbotWidgetProps) {
       setMode('translate');
     } else if (suggestion.includes('RA')) {
       setMode('laws');
+    } else if (suggestion.includes('Speech')) {
+      setMode('speech');
+    } else if (suggestion.includes('Travel')) {
+      setMode('tourism');
     } else {
       setMode('assistant');
     }
@@ -109,8 +123,8 @@ export function ChatbotWidget({ role, activeCase }: ChatbotWidgetProps) {
         position: 'fixed',
         bottom: '5.5rem',
         right: '1.5rem',
-        width: '380px',
-        maxHeight: '520px',
+        width: '400px',
+        maxHeight: '540px',
         height: 'calc(100vh - 120px)',
         border: '2.5px solid #1e1b4b',
         borderRadius: '24px',
@@ -154,11 +168,13 @@ export function ChatbotWidget({ role, activeCase }: ChatbotWidgetProps) {
         </div>
         
         {/* Mode Tabs */}
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.35rem', overflowX: 'auto' }}>
           {[
             { id: 'assistant', label: 'General', icon: MessageSquare },
             { id: 'laws', label: 'Laws', icon: Scale },
-            { id: 'translate', label: 'Translate', icon: Languages }
+            { id: 'translate', label: 'Translate', icon: Languages },
+            { id: 'speech', label: 'Speech', icon: Mic },
+            { id: 'tourism', label: 'Travel', icon: Compass }
           ].map(tab => (
             <button
               key={tab.id}
@@ -168,19 +184,20 @@ export function ChatbotWidget({ role, activeCase }: ChatbotWidgetProps) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '0.25rem',
-                padding: '0.4rem',
+                gap: '0.2rem',
+                padding: '0.35rem 0.45rem',
                 borderRadius: '99px',
                 border: tab.id === mode ? '2px solid white' : '2px solid rgba(255,255,255,0.3)',
                 background: tab.id === mode ? 'rgba(255,255,255,0.2)' : 'transparent',
                 color: 'white',
-                fontSize: '0.75rem',
+                fontSize: '0.72rem',
                 fontWeight: 700,
                 cursor: 'pointer',
-                transition: 'all 0.2s'
+                transition: 'all 0.2s',
+                whiteSpace: 'nowrap'
               }}
             >
-              <tab.icon size={14} />
+              <tab.icon size={13} />
               {tab.label}
             </button>
           ))}
