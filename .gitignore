@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+EGOV_APIS_SHOWCASE.md
+EGOV_APIS_SHOWCASE*.md
+
