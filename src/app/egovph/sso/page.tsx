@@ -103,27 +103,15 @@ function SSOContent() {
                 />
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
-                <div>
-                  <label style={{ fontSize: "0.8rem", fontWeight: 900, color: "#1e1b4b", display: "block", marginBottom: "0.3rem" }}>Citizen Full Name</label>
-                  <input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                    placeholder="e.g. JOSIE SANTOS DELA CRUZ"
-                    style={{ width: "100%", padding: "0.7rem 1rem", border: "2px solid #1e1b4b", borderRadius: 14, fontSize: "0.88rem", fontWeight: 700, boxSizing: "border-box" }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: "0.8rem", fontWeight: 900, color: "#1e1b4b", display: "block", marginBottom: "0.3rem" }}>UniqID (System Pre-filled)</label>
-                  <input
-                    value={uniqid}
-                    onChange={(e) => setUniqid(e.target.value)}
-                    required
-                    placeholder="MVPCBEUVCGPZR"
-                    style={{ width: "100%", padding: "0.7rem 1rem", border: "2px solid #1e1b4b", borderRadius: 14, fontSize: "0.88rem", fontWeight: 700, boxSizing: "border-box", fontFamily: "monospace", background: "#f8fafc" }}
-                  />
-                </div>
+              <div>
+                <label style={{ fontSize: "0.8rem", fontWeight: 900, color: "#1e1b4b", display: "block", marginBottom: "0.3rem" }}>Citizen Full Name</label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                  placeholder="e.g. JOSIE SANTOS DELA CRUZ"
+                  style={{ width: "100%", padding: "0.7rem 1rem", border: "2px solid #1e1b4b", borderRadius: 14, fontSize: "0.88rem", fontWeight: 700, boxSizing: "border-box" }}
+                />
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
