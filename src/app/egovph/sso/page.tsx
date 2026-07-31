@@ -25,7 +25,7 @@ function SSOContent() {
     setUniqid("MVPCBEUVCGPZR");
     setPcn("9639954762664080");
     setEmail("josie@yopmail.com");
-    setPhone("+63 909 000 0000");
+    setPhone("9090000000");
     setBirthdate("1990-01-01");
     setAddress("1123 RIZAL ST., POBLACION, CITY OF ALAMINOS, PANGASINAN");
   };
@@ -34,12 +34,17 @@ function SSOContent() {
     e.preventDefault();
     setStep("verifying");
 
+    const cleanPhone = phone.replace(/\D/g, "").replace(/^0/, "");
+    const formattedPhone = cleanPhone
+      ? `+63 ${cleanPhone.replace(/(\d{3})(\d{3})(\d{4})/, "$1 $2 $3")}`
+      : "+63 909 000 0000";
+
     const userInfo = { 
       name: name || "JOSIE SANTOS DELA CRUZ", 
       uniqid: uniqid || "MVPCBEUVCGPZR", 
       pcn: pcn || "9639954762664080", 
       email: email || "josie@yopmail.com", 
-      phone: phone || "+63 909 000 0000", 
+      phone: formattedPhone, 
       birthdate: birthdate || "1990-01-01", 
       address: address || "1123 RIZAL ST., POBLACION, CITY OF ALAMINOS, PANGASINAN", 
       exchangeCode 
@@ -126,13 +131,34 @@ function SSOContent() {
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: "0.8rem", fontWeight: 900, color: "#1e1b4b", display: "block", marginBottom: "0.3rem" }}>Mobile Number</label>
+                  <label style={{ fontSize: "0.8rem", fontWeight: 900, color: "#1e1b4b", display: "block", marginBottom: "0.3rem" }}>Date of Birth</label>
                   <input
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    type="date"
+                    value={birthdate}
+                    onChange={(e) => setBirthdate(e.target.value)}
                     required
-                    placeholder="e.g. +63 909 000 0000"
                     style={{ width: "100%", padding: "0.7rem 1rem", border: "2px solid #1e1b4b", borderRadius: 14, fontSize: "0.88rem", fontWeight: 700, boxSizing: "border-box" }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: "0.8rem", fontWeight: 900, color: "#1e1b4b", display: "block", marginBottom: "0.3rem" }}>Mobile Number</label>
+                <div style={{ display: "flex", alignItems: "center", border: "2px solid #1e1b4b", borderRadius: 14, overflow: "hidden", background: "#ffffff" }}>
+                  <span style={{ padding: "0.7rem 0.85rem", background: "#e0e7ff", borderRight: "2px solid #1e1b4b", fontWeight: 900, fontSize: "0.88rem", color: "#1e1b4b", display: "flex", alignItems: "center", gap: "0.35rem", userSelect: "none" }}>
+                    🇵🇭 +63
+                  </span>
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, "");
+                      const cleaned = val.startsWith("0") ? val.slice(1) : val;
+                      setPhone(cleaned.slice(0, 10));
+                    }}
+                    required
+                    placeholder="9090000000"
+                    style={{ flex: 1, padding: "0.7rem 1rem", border: "none", outline: "none", fontSize: "0.9rem", fontWeight: 700, width: "100%" }}
                   />
                 </div>
               </div>
