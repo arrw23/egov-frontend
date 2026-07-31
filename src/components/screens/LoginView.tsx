@@ -62,7 +62,13 @@ export function LoginView({ onLogin }: { onLogin: (r: Role) => void }) {
           <p style={{ color: "#4338ca", fontSize: "0.9rem", fontWeight: 600, marginBottom: "1.5rem" }}>Authenticate automatically via eGovPH Single Sign-On.</p>
 
           <button
-            onClick={() => onLogin("applicant")}
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                window.location.href = "/egovph/sso";
+              } else {
+                onLogin("applicant");
+              }
+            }}
             className="primary wide"
             style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.6rem", textDecoration: "none", marginBottom: "1.5rem", padding: "0.9rem 1.25rem", borderRadius: "9999px", width: "100%" }}
           >

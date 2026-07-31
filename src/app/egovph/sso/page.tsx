@@ -12,19 +12,38 @@ function SSOContent() {
   const exchangeCode = searchParams.get("exchange_code") || searchParams.get("code") || "HACKATHON_SSO_LIVE";
 
   const [step, setStep] = useState<"form" | "verifying" | "success">("form");
-  const [name, setName] = useState("JOSIE SANTOS DELA CRUZ");
+  const [name, setName] = useState("");
   const [uniqid, setUniqid] = useState("MVPCBEUVCGPZR");
-  const [pcn, setPcn] = useState("9639954762664080");
-  const [email, setEmail] = useState("josie@yopmail.com");
-  const [phone, setPhone] = useState("+63 909 000 0000");
-  const [birthdate, setBirthdate] = useState("1990-01-01");
-  const [address, setAddress] = useState("1123 RIZAL ST., POBLACION, CITY OF ALAMINOS, PANGASINAN");
+  const [pcn, setPcn] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [birthdate, setBirthdate] = useState("");
+  const [address, setAddress] = useState("");
+
+  const fillDemoData = () => {
+    setName("JOSIE SANTOS DELA CRUZ");
+    setUniqid("MVPCBEUVCGPZR");
+    setPcn("9639954762664080");
+    setEmail("josie@yopmail.com");
+    setPhone("+63 909 000 0000");
+    setBirthdate("1990-01-01");
+    setAddress("1123 RIZAL ST., POBLACION, CITY OF ALAMINOS, PANGASINAN");
+  };
 
   const handleAuthenticate = async (e: React.FormEvent) => {
     e.preventDefault();
     setStep("verifying");
 
-    const userInfo = { name, uniqid, pcn, email, phone, birthdate, address, exchangeCode };
+    const userInfo = { 
+      name: name || "JOSIE SANTOS DELA CRUZ", 
+      uniqid: uniqid || "MVPCBEUVCGPZR", 
+      pcn: pcn || "9639954762664080", 
+      email: email || "josie@yopmail.com", 
+      phone: phone || "+63 909 000 0000", 
+      birthdate: birthdate || "1990-01-01", 
+      address: address || "1123 RIZAL ST., POBLACION, CITY OF ALAMINOS, PANGASINAN", 
+      exchangeCode 
+    };
     if (typeof window !== "undefined") {
       localStorage.setItem("egov_user_info", JSON.stringify(userInfo));
     }
@@ -40,7 +59,7 @@ function SSOContent() {
     setTimeout(() => {
       setStep("success");
       setTimeout(() => {
-        router.push(`/?sso=authenticated&name=${encodeURIComponent(name)}`);
+        router.push(`/?sso=authenticated&name=${encodeURIComponent(userInfo.name)}`);
       }, 1600);
     }, 1200);
   };
@@ -54,23 +73,32 @@ function SSOContent() {
 
         {step === "form" && (
           <div>
-            <div style={{ background: "#fef08a", color: "#1e1b4b", padding: "0.3rem 0.85rem", borderRadius: "9999px", border: "1.5px solid #1e1b4b", fontWeight: 900, fontSize: "0.72rem", display: "inline-flex", gap: "0.35rem", alignItems: "center", marginBottom: "0.75rem" }}>
-              <LockKeyhole size={14} /> OFFICIAL eGOVPH SINGLE SIGN-ON (SSO)
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+              <div style={{ background: "#fef08a", color: "#1e1b4b", padding: "0.3rem 0.85rem", borderRadius: "9999px", border: "1.5px solid #1e1b4b", fontWeight: 900, fontSize: "0.72rem", display: "inline-flex", gap: "0.35rem", alignItems: "center" }}>
+                <LockKeyhole size={14} /> OFFICIAL eGOVPH SINGLE SIGN-ON (SSO)
+              </div>
+              <button
+                type="button"
+                onClick={fillDemoData}
+                style={{ background: "#e0e7ff", border: "1.5px solid #1e1b4b", borderRadius: "9999px", padding: "0.25rem 0.75rem", fontSize: "0.72rem", fontWeight: 800, color: "#1e1b4b", cursor: "pointer" }}
+              >
+                ✨ Auto-fill Demo Details
+              </button>
             </div>
             <h2 style={{ fontSize: "1.5rem", fontWeight: 900, color: "#1e1b4b", margin: "0 0 0.25rem 0" }}>Sign in with eGovPH Credentials</h2>
             <p style={{ color: "#4338ca", fontSize: "0.88rem", fontWeight: 600, marginBottom: "1.25rem" }}>
-              Partner Code: <code style={{ background: "#f5f3ff", padding: "0.2rem 0.5rem", borderRadius: 8, border: "1px solid #1e1b4b" }}>HACKATHON_SSO</code>
+              Enter your citizen account details below. Partner integration codes and exchange tokens are automatically pre-filled by the system.
             </p>
 
             <form onSubmit={handleAuthenticate} style={{ display: "flex", flexDirection: "column", gap: "0.85rem", textAlign: "left" }}>
               <div>
-                <label style={{ fontSize: "0.8rem", fontWeight: 900, color: "#1e1b4b", display: "block", marginBottom: "0.3rem" }}>Citizen Account (eGov Identity)</label>
+                <label style={{ fontSize: "0.8rem", fontWeight: 900, color: "#1e1b4b", display: "block", marginBottom: "0.3rem" }}>Citizen Account (eGov Identity / Email)</label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  placeholder="josie@yopmail.com"
+                  placeholder="e.g. josie@yopmail.com"
                   style={{ width: "100%", padding: "0.7rem 1rem", border: "2px solid #1e1b4b", borderRadius: 14, fontSize: "0.9rem", fontWeight: 700, boxSizing: "border-box" }}
                 />
               </div>
@@ -82,16 +110,18 @@ function SSOContent() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     required
+                    placeholder="e.g. JOSIE SANTOS DELA CRUZ"
                     style={{ width: "100%", padding: "0.7rem 1rem", border: "2px solid #1e1b4b", borderRadius: 14, fontSize: "0.88rem", fontWeight: 700, boxSizing: "border-box" }}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: "0.8rem", fontWeight: 900, color: "#1e1b4b", display: "block", marginBottom: "0.3rem" }}>UniqID (eGov Identity)</label>
+                  <label style={{ fontSize: "0.8rem", fontWeight: 900, color: "#1e1b4b", display: "block", marginBottom: "0.3rem" }}>UniqID (System Pre-filled)</label>
                   <input
                     value={uniqid}
                     onChange={(e) => setUniqid(e.target.value)}
                     required
-                    style={{ width: "100%", padding: "0.7rem 1rem", border: "2px solid #1e1b4b", borderRadius: 14, fontSize: "0.88rem", fontWeight: 700, boxSizing: "border-box", fontFamily: "monospace" }}
+                    placeholder="MVPCBEUVCGPZR"
+                    style={{ width: "100%", padding: "0.7rem 1rem", border: "2px solid #1e1b4b", borderRadius: 14, fontSize: "0.88rem", fontWeight: 700, boxSizing: "border-box", fontFamily: "monospace", background: "#f8fafc" }}
                   />
                 </div>
               </div>
@@ -103,6 +133,7 @@ function SSOContent() {
                     value={pcn}
                     onChange={(e) => setPcn(e.target.value)}
                     required
+                    placeholder="e.g. 9639954762664080"
                     style={{ width: "100%", padding: "0.7rem 1rem", border: "2px solid #1e1b4b", borderRadius: 14, fontSize: "0.88rem", fontWeight: 700, boxSizing: "border-box", fontFamily: "monospace" }}
                   />
                 </div>
@@ -112,13 +143,14 @@ function SSOContent() {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     required
+                    placeholder="e.g. +63 909 000 0000"
                     style={{ width: "100%", padding: "0.7rem 1rem", border: "2px solid #1e1b4b", borderRadius: 14, fontSize: "0.88rem", fontWeight: 700, boxSizing: "border-box" }}
                   />
                 </div>
               </div>
 
               <div style={{ background: "#f5f3ff", padding: "0.75rem 1rem", borderRadius: 14, border: "1.5px solid #1e1b4b", fontSize: "0.78rem", color: "#4338ca", fontWeight: 700 }}>
-                💡 <b>Auto-Generated Case Data:</b> Hospital bill (₱150,000.00), barangay indigency certificate, and DSWD case record will be automatically populated & verified for <b>{name}</b>.
+                💡 <b>Manual Authentication:</b> Enter citizen details above to authenticate via eGovPH Single Sign-On.
               </div>
 
               <button className="primary wide" type="submit" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.6rem", padding: "0.85rem 1.25rem", fontSize: "0.95rem", marginTop: "0.5rem" }}>
