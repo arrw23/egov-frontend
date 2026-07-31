@@ -220,7 +220,7 @@ export const api = {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: JSON.stringify({ prompt, category }),
     }, true, () => ({
-      data: `To obtain your digital Taxpayer Identification Number (TIN) ID through the eGovPH app, ensure you have a Digital TIN registered in the BIR ORUS system. Prompt processed: "${prompt}". You can also file unified medical guarantee letters directly through eGov's eGuarantee.`,
+      data: `To obtain your digital Taxpayer Identification Number (TIN) ID through the eGovPH app, ensure you have a Digital TIN registered in the BIR ORUS system. Prompt processed: "${prompt}". You can also file unified medical guarantee letters directly through GabayMed.`,
       session_id: "b67017a4-da57-40ab-96c9-ca0ccb530ec7",
     }));
   },
@@ -381,7 +381,7 @@ export const api = {
     }));
   },
 
-  // --- Core eGov's eGuarantee Auth & Session ---
+  // --- Core GabayMed Auth & Session ---
   async getMe(): Promise<{ status: string; user: User }> {
     return request<{ status: string; user: User }>('/me', {}, false, () => ({
       status: "success",
@@ -452,11 +452,115 @@ export const api = {
     return request<{ status: string; case: MedicalCase }>(`/cases/${id}`);
   },
 
-  async uploadDocument(caseId: number, docType: string, title: string): Promise<{ status: string; document: CaseDocument }> {
+  async uploadDocument(caseId: number, docType: string, title: string, file?: File): Promise<{ status: string; document: CaseDocument }> {
+    if (file) {
+      const formData = new FormData();
+      formData.append('document_type', docType);
+      formData.append('title', title);
+      formData.append('file', file);
+      try {
+        const res = await fetch(`${API_BASE}/cases/${caseId}/documents`, {
+          method: 'POST',
+          body: formData,
+        });
+        if (res.ok) return await res.json();
+      } catch (e) {
+        console.warn("File upload fallback to mock response", e);
+      }
+    }
     return request<{ status: string; document: CaseDocument }>(`/cases/${caseId}/documents`, {
       method: 'POST',
       body: JSON.stringify({ document_type: docType, title }),
-    });
+    }, false, () => ({
+      status: "success",
+      document: {
+        id: Date.now(),
+        medical_case_id: caseId,
+        document_type: docType,
+        title: title,
+        storage_path: `cases/${caseId}/${docType}.pdf`,
+        file_size: file ? file.size : 142000,
+        status: 'verified',
+        sha256_hash: `DOC-HASH-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
+        verification_reference: `VER-DOC-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
+        extracted_json: {
+          blockchain_tx_hash: `0x${Math.random().toString(16).substring(2)}${Math.random().toString(16).substring(2)}`.substring(0, 42),
+          blockchain_block_number: `0x${(1849200 + Math.floor(Math.random() * 100)).toString(16)}`,
+          blockchain_consensus: 'IBFT 2.0 Proof of Authority (Government Nodes)',
+          full_sha256: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`,
+          anchored_at: new Date().toISOString(),
+        }
+      }
+    }));
+  },
+
+  async uploadHospitalDocument(caseId: number, docType: string, title: string, file?: File, docReqId?: number): Promise<{ status: string; document: CaseDocument }> {
+    if (file) {
+      const formData = new FormData();
+      formData.append('document_type', docType);
+      formData.append('title', title);
+      formData.append('file', file);
+      if (docReqId) formData.append('doc_request_id', String(docReqId));
+      try {
+        const res = await fetch(`${API_BASE}/hospital/cases/${caseId}/documents`, {
+          method: 'POST',
+          body: formData,
+        });
+        if (res.ok) return await res.json();
+      } catch (e) {
+        console.warn("Hospital file upload fallback", e);
+      }
+    }
+    return request<{ status: string; document: CaseDocument }>(`/hospital/cases/${caseId}/documents`, {
+      method: 'POST',
+      body: JSON.stringify({ document_type: docType, title, doc_request_id: docReqId }),
+    }, false, () => ({
+      status: "success",
+      document: {
+        id: Date.now(),
+        medical_case_id: caseId,
+        document_type: docType,
+        title: title,
+        storage_path: `hospital/cases/${caseId}/${docType}.pdf`,
+        file_size: file ? file.size : 256000,
+        status: 'certified',
+        sha256_hash: `HSP-HASH-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
+        verification_reference: `HSP-REF-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
+        extracted_json: {
+          blockchain_tx_hash: `0x${Math.random().toString(16).substring(2)}${Math.random().toString(16).substring(2)}`.substring(0, 42),
+          blockchain_block_number: `0x${(1849200 + Math.floor(Math.random() * 100)).toString(16)}`,
+          blockchain_consensus: 'IBFT 2.0 Proof of Authority (Government Nodes)',
+          certified_by: 'Dr. Ana Reyes (Manila General Hospital)',
+          anchored_at: new Date().toISOString(),
+        }
+      }
+    }));
+  },
+
+  async verifyDocumentBlockchain(docId: number): Promise<{ status: string; document: any; blockchain: any }> {
+    return request<{ status: string; document: any; blockchain: any }>(`/documents/${docId}/verify-blockchain`, {}, false, () => ({
+      status: "success",
+      document: {
+        id: docId,
+        title: "Official Medical Record / Applicant File",
+        document_type: "statement_of_account",
+        status: "certified",
+        sha256_hash: "DOC-HASH-99A1F2C84B",
+        full_sha256: "8f431c92a10b428d0987f65e2310ab45981273645bc890123ef890123456789a",
+        verification_reference: "VER-DOC-88A1901B",
+        created_at: new Date().toISOString()
+      },
+      blockchain: {
+        network: "Hyperledger Besu Zero-Fee eGovChain",
+        consensus: "IBFT 2.0 Proof of Authority (Government Nodes)",
+        contract_address: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
+        transaction_hash: "0x98f2190c5d12a8f9104b2819c5b201f8a920b41c",
+        block_number: "0x1c37b1",
+        gas_used: "0x0 (Zero Fee)",
+        verification_status: "TAMPER_EVIDENT_VALID",
+        ledger_result: { verified: true, state: "ANCHORED_AND_VALIDATED" }
+      }
+    }));
   },
 
   async requestHospitalDocuments(caseId: number): Promise<{ status: string; request: HospitalRequest }> {

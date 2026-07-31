@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "eGov's eGuarantee | Service Requirement & Assistance Platform",
+  title: "GabayMed | Service Requirement & Assistance Platform",
   description: "Unified Philippine eGov service requirement builder & digital guarantee letter platform.",
 };
 
