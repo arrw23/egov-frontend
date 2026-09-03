@@ -4,6 +4,7 @@ import {
   Bot,
   Brain,
   Building2,
+  Camera,
   CheckCircle2,
   Code2,
   Copy,
