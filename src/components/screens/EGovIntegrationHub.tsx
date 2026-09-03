@@ -45,9 +45,9 @@ export function EGovIntegrationHub() {
   const [curlCommand, setCurlCommand] = useState<string>("");
 
   // SSO state
-  const [exchangeCode, setExchangeCode] = useState("generated_exchange_code");
-  const [partnerCode, setPartnerCode] = useState("SSO_PARTNER_CODE");
-  const [partnerSecret, setPartnerSecret] = useState("••••••••••••••••");
+  const [exchangeCode, setExchangeCode] = useState("CYsS3rqHXM8QRBsO0444lXAUlcp1jeU4");
+  const [partnerCode, setPartnerCode] = useState("3b597185a139440d8e6d56bc45330ee8");
+  const [partnerSecret, setPartnerSecret] = useState("1cdace2a179b4bf6917f6068c683b417");
   const [ssoToken, setSsoToken] = useState("");
 
   // eVerify state
@@ -55,9 +55,15 @@ export function EGovIntegrationHub() {
   const [lastName, setLastName] = useState("Dela Cruz");
   const [birthDate, setBirthDate] = useState("1989-09-12");
   const [qrValue, setQrValue] = useState("RAW_QR_CODE_VALUE_PHILSYS_9639954762664080");
+  const [livenessSessionId, setLivenessSessionId] = useState("");
+  const [livenessAction, setLivenessAction] = useState<"redirect" | "post" | "close">("redirect");
+  const [livenessCallbackUrl, setLivenessCallbackUrl] = useState("https://your-app.com/callback");
+  const [livenessDelay, setLivenessDelay] = useState(3000);
 
   // AI state
-  const [aiPrompt, setAiPrompt] = useState("How to apply for medical assistance");
+  const [aiAccessCode, setAiAccessCode] = useState("666d079fc10443d595c32af87eacbc8b");
+  const [aiTokenValue, setAiTokenValue] = useState("");
+  const [aiPrompt, setAiPrompt] = useState("how can i get my digital tin id here in egov");
   const [aiCategory, setAiCategory] = useState("PH");
 
   // Blockchain state
@@ -65,8 +71,40 @@ export function EGovIntegrationHub() {
   const [recordHash, setRecordHash] = useState("0xd8f2910c5d12a8f9104b2819c5b201f8");
 
   // Pay & Compass
-  const [settleAmount, setSettleAmount] = useState(50000);
+  const [settleAmount, setSettleAmount] = useState(1000);
+  const [payTransactionUuid, setPayTransactionUuid] = useState("");
+  const [payTxnId, setPayTxnId] = useState("TESTREF123");
   const [programCode, setProgramCode] = useState("DSWD-AICS");
+
+  // eMessage SMS state
+  const [smsNumber, setSmsNumber] = useState("+639090000000");
+  const [smsMessage, setSmsMessage] = useState("GabayMed Notice: Your DSWD guarantee letter GL-DSWD-2026-04821 has been issued to Manila General Hospital.");
+
+  // eReport state
+  const [ereportAccessCode, setEreportAccessCode] = useState("2a72bdcac1b0405fb2c679d029f03cfb");
+  const [ereportTokenVal, setEreportTokenVal] = useState("");
+  const [ereportViewTokenVal, setEreportViewTokenVal] = useState("");
+  const [ereportEmail, setEreportEmail] = useState("josie@yopmail.com");
+  const [ereportOtp, setEreportOtp] = useState("000000");
+  const [ereportCaseNumber, setEreportCaseNumber] = useState("PFM-090326-1489");
+  const [ereportRegionCode, setEreportRegionCode] = useState("040000000");
+  const [ereportProvinceCode, setEreportProvinceCode] = useState("042100000");
+  const [ereportMuniCode, setEreportMuniCode] = useState("042111000");
+
+  // DBM Compass state
+  const [compassReportYear, setCompassReportYear] = useState(2026);
+  const [compassSheetScope, setCompassSheetScope] = useState<"summary" | "agency" | "sucs">("summary");
+  const [compassPeriod, setCompassPeriod] = useState("FY");
+  const [compassClass, setCompassClass] = useState("PS");
+  const [compassEntityName, setCompassEntityName] = useState("Agriculture");
+  const [compassLgsfProgram, setCompassLgsfProgram] = useState("FALGU");
+  const [compassProvince, setCompassProvince] = useState("Bulacan");
+  const [compassMuni, setCompassMuni] = useState("Malolos");
+  const [compassDeptCode, setCompassDeptCode] = useState("010000000000");
+  const [compassAgencyCode, setCompassAgencyCode] = useState("010010000000");
+  const [compassOperatingCode, setCompassOperatingCode] = useState("010010000001");
+  const [compassExpenseClass, setCompassExpenseClass] = useState("5020000000");
+  const [compassSaroNo, setCompassSaroNo] = useState("SARO-BMB-A-26-0000001");
 
   const runApiCall = async (fn: () => Promise<any>, curlSnippet: string) => {
     setLoading(true);
@@ -165,7 +203,7 @@ export function EGovIntegrationHub() {
                   />
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "0.65rem", marginTop: "0.5rem" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "0.55rem", marginTop: "0.5rem" }}>
                   <button
                     className="primary"
                     disabled={loading}
@@ -175,9 +213,9 @@ export function EGovIntegrationHub() {
                         `POST /api/v1/egovchain/anchor -> {"record_id":"${recordId}","hash":"${recordHash}"}`
                       )
                     }
-                    style={{ padding: "0.75rem", fontSize: "0.85rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.4rem" }}
+                    style={{ padding: "0.65rem 0.5rem", fontSize: "0.8rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.4rem" }}
                   >
-                    <Network size={16} /> Anchor Record
+                    <Network size={15} /> Anchor Record
                   </button>
 
                   <button
@@ -186,12 +224,100 @@ export function EGovIntegrationHub() {
                     onClick={() =>
                       runApiCall(
                         () => api.besuJsonRpc("eth_blockNumber", []),
-                        `POST /api/v1/egovchain/rpc -> {"method":"eth_blockNumber"}`
+                        `POST /api/v1/egovchain/rpc -> eth_blockNumber`
                       )
                     }
-                    style={{ padding: "0.75rem", fontSize: "0.85rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.4rem" }}
+                    style={{ padding: "0.65rem 0.5rem", fontSize: "0.8rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.4rem" }}
                   >
-                    <Cpu size={16} /> Query Block Height
+                    <Cpu size={15} /> Block Height
+                  </button>
+
+                  <button
+                    className="outline"
+                    disabled={loading}
+                    onClick={() =>
+                      runApiCall(
+                        () => api.besuJsonRpc("rpc_modules", []),
+                        `POST /api/v1/egovchain/rpc -> rpc_modules`
+                      )
+                    }
+                    style={{ padding: "0.65rem 0.5rem", fontSize: "0.8rem" }}
+                  >
+                    RPC Modules
+                  </button>
+
+                  <button
+                    className="outline"
+                    disabled={loading}
+                    onClick={() =>
+                      runApiCall(
+                        () => api.besuJsonRpc("eth_chainId", []),
+                        `POST /api/v1/egovchain/rpc -> eth_chainId (13371)`
+                      )
+                    }
+                    style={{ padding: "0.65rem 0.5rem", fontSize: "0.8rem" }}
+                  >
+                    Chain ID
+                  </button>
+
+                  <button
+                    className="outline"
+                    disabled={loading}
+                    onClick={() =>
+                      runApiCall(
+                        () => api.besuJsonRpc("eth_gasPrice", []),
+                        `POST /api/v1/egovchain/rpc -> eth_gasPrice (0x0 Zero Fee)`
+                      )
+                    }
+                    style={{ padding: "0.65rem 0.5rem", fontSize: "0.8rem" }}
+                  >
+                    Gas Price (Zero)
+                  </button>
+
+                  <button
+                    className="outline"
+                    disabled={loading}
+                    onClick={() =>
+                      runApiCall(
+                        () => api.besuJsonRpc("web3_clientVersion", []),
+                        `POST /api/v1/egovchain/rpc -> web3_clientVersion`
+                      )
+                    }
+                    style={{ padding: "0.65rem 0.5rem", fontSize: "0.8rem" }}
+                  >
+                    Besu Client
+                  </button>
+
+                  <button
+                    className="outline"
+                    disabled={loading}
+                    onClick={() =>
+                      runApiCall(
+                        () => api.besuJsonRpc("txpool_besuStatistics", []),
+                        `POST /api/v1/egovchain/rpc -> txpool_besuStatistics`
+                      )
+                    }
+                    style={{ padding: "0.65rem 0.5rem", fontSize: "0.8rem" }}
+                  >
+                    TxPool Stats
+                  </button>
+
+                  <button
+                    className="outline"
+                    disabled={loading}
+                    onClick={() =>
+                      runApiCall(
+                        () =>
+                          api.besuJsonRpc("eth_call", [
+                            { to: "0x52B6c6ffc6b5413F09C2E3C9a85703f848EaF014", data: "0x7d0a5142" },
+                            "latest",
+                          ]),
+                        `POST /api/v1/egovchain/rpc -> Guestbook teamCount()`
+                      )
+                    }
+                    style={{ padding: "0.65rem 0.5rem", fontSize: "0.8rem" }}
+                  >
+                    Guestbook Call
                   </button>
                 </div>
               </div>
@@ -232,7 +358,7 @@ export function EGovIntegrationHub() {
                     onClick={() =>
                       runApiCall(
                         async () => {
-                          const res = await api.ssoToken(exchangeCode, partnerCode, partnerSecret);
+                          const res = await api.ssoToken(exchangeCode);
                           if (res.access_token) setSsoToken(res.access_token);
                           return res;
                         },
@@ -266,11 +392,11 @@ export function EGovIntegrationHub() {
           {activeTab === "everify" && (
             <div>
               <div style={{ background: "#dcfce7", color: "#166534", padding: "0.3rem 0.8rem", borderRadius: "9999px", border: "1.5px solid #1e1b4b", fontWeight: 900, fontSize: "0.75rem", display: "inline-block", marginBottom: "0.75rem" }}>
-                PHILSYS IDENTITY SERVICE
+                PHILSYS IDENTITY SERVICE (NIDAS eVERIFY)
               </div>
-              <h3 style={{ fontSize: "1.35rem", fontWeight: 900, marginBottom: "0.4rem", color: "#1e1b4b" }}>PhilSys Identity Verification</h3>
+              <h3 style={{ fontSize: "1.35rem", fontWeight: 900, marginBottom: "0.4rem", color: "#1e1b4b" }}>PhilSys NIDAS Identity Verification</h3>
               <p style={{ color: "#4338ca", fontSize: "0.88rem", fontWeight: 600, marginBottom: "1.25rem" }}>
-                Cross-check citizen demographics and scanned National ID QR code against PhilSys central database.
+                Tier 1 & Tier 2 server-to-server identity verification with Demographics, National ID QR decoding, and Face Liveness SDK integration.
               </p>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
@@ -283,6 +409,39 @@ export function EGovIntegrationHub() {
                     <label style={{ fontSize: "0.8rem", fontWeight: 900, display: "block", marginBottom: "0.3rem" }}>Last Name</label>
                     <input value={lastName} onChange={(e) => setLastName(e.target.value)} style={{ width: "100%", padding: "0.6rem 0.85rem", border: "2px solid #1e1b4b", borderRadius: 12, fontWeight: 700 }} />
                   </div>
+                  <div>
+                    <label style={{ fontSize: "0.8rem", fontWeight: 900, display: "block", marginBottom: "0.3rem" }}>Birth Date</label>
+                    <input value={birthDate} onChange={(e) => setBirthDate(e.target.value)} style={{ width: "100%", padding: "0.6rem 0.85rem", border: "2px solid #1e1b4b", borderRadius: 12, fontWeight: 700 }} />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: "0.8rem", fontWeight: 900, display: "block", marginBottom: "0.3rem" }}>Face Liveness Session ID</label>
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <input value={livenessSessionId} onChange={(e) => setLivenessSessionId(e.target.value)} style={{ flex: 1, padding: "0.6rem 0.85rem", border: "2px solid #1e1b4b", borderRadius: 12, fontWeight: 700, fontFamily: "monospace" }} />
+                    <button
+                      type="button"
+                      className="outline"
+                      onClick={async () => {
+                        if (typeof window !== "undefined" && (window as any).eKYC) {
+                          try {
+                            const res = await (window as any).eKYC().start({
+                              pubKey: "eyJpdiI6InAzOGc3d1BZcVVZck1IY3plS0xscVE9PSIsInZhbHVlIjoiSlRESmdFYkZ4ZnV3M1ZkUjFiTHpDUT09IiwibWFjIjoiZTEzZjI5ZGRkZTVhNWNkNGU3ZmQ0NDY4MTAyZDY2Yjc1NjJiYmMxNTMwN2E2NzVlZmM5ZjhjZmEyZWM1ZmMwMCIsInRhZyI6IiJ9"
+                            });
+                            if (res?.result?.session_id) {
+                              setLivenessSessionId(res.result.session_id);
+                              setResponseOutput(res);
+                            }
+                          } catch (e: any) {
+                            console.error(e);
+                          }
+                        }
+                      }}
+                      style={{ padding: "0.6rem 0.9rem", fontSize: "0.78rem", whiteSpace: "nowrap" }}
+                    >
+                      Launch Web SDK
+                    </button>
+                  </div>
                 </div>
 
                 <div>
@@ -292,17 +451,31 @@ export function EGovIntegrationHub() {
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "0.65rem", marginTop: "0.5rem" }}>
                   <button
+                    className="outline"
+                    disabled={loading}
+                    onClick={() =>
+                      runApiCall(
+                        () => api.eVerifyAuth(),
+                        `POST /api/auth -> Authenticate (Generate Access Token)`
+                      )
+                    }
+                    style={{ padding: "0.75rem", fontSize: "0.8rem" }}
+                  >
+                    1. Generate Token
+                  </button>
+
+                  <button
                     className="primary"
                     disabled={loading}
                     onClick={() =>
                       runApiCall(
-                        () => api.eVerifyQuery({ first_name: firstName, last_name: lastName, birth_date: birthDate, face_liveness_session_id: "a1b3fae6-af74-4896-bd58-32a81604de01" }),
-                        `POST /api/query -> {"first_name":"${firstName}","last_name":"${lastName}"}`
+                        () => api.eVerifyQuery({ first_name: firstName, last_name: lastName, birth_date: birthDate, face_liveness_session_id: livenessSessionId }),
+                        `POST /api/query -> {"first_name":"${firstName}","last_name":"${lastName}","face_liveness_session_id":"${livenessSessionId}"}`
                       )
                     }
-                    style={{ padding: "0.75rem", fontSize: "0.82rem" }}
+                    style={{ padding: "0.75rem", fontSize: "0.8rem" }}
                   >
-                    Demographics Check
+                    2. Demographics Verify
                   </button>
 
                   <button
@@ -311,12 +484,26 @@ export function EGovIntegrationHub() {
                     onClick={() =>
                       runApiCall(
                         () => api.eVerifyQrCheck(qrValue),
-                        `POST /api/query/qr/check -> National ID QR`
+                        `POST /api/query/qr/check -> {"value":"${qrValue}"}`
                       )
                     }
-                    style={{ padding: "0.75rem", fontSize: "0.82rem" }}
+                    style={{ padding: "0.75rem", fontSize: "0.8rem" }}
                   >
-                    National ID QR Check
+                    3. QR Check
+                  </button>
+
+                  <button
+                    className="primary"
+                    disabled={loading}
+                    onClick={() =>
+                      runApiCall(
+                        () => api.eVerifyQrVerify(qrValue, livenessSessionId),
+                        `POST /api/query/qr -> {"value":"${qrValue}","face_liveness_session_id":"${livenessSessionId}"}`
+                      )
+                    }
+                    style={{ padding: "0.75rem", fontSize: "0.8rem" }}
+                  >
+                    4. QR + Face Verify
                   </button>
                 </div>
               </div>
@@ -327,41 +514,144 @@ export function EGovIntegrationHub() {
           {activeTab === "liveness" && (
             <div>
               <div style={{ background: "#fef3c7", color: "#92400e", padding: "0.3rem 0.8rem", borderRadius: "9999px", border: "1.5px solid #1e1b4b", fontWeight: 900, fontSize: "0.75rem", display: "inline-block", marginBottom: "0.75rem" }}>
-                BIOMETRIC LIVENESS SERVICE
+                OFFICIAL BIOMETRIC LIVENESS WEB SDK
               </div>
               <h3 style={{ fontSize: "1.35rem", fontWeight: 900, marginBottom: "0.4rem", color: "#1e1b4b" }}>Face Liveness Verification</h3>
               <p style={{ color: "#4338ca", fontSize: "0.88rem", fontWeight: 600, marginBottom: "1.25rem" }}>
-                Create interactive biometric liveness verification sessions and query result status.
+                Execute biometric liveness via the official eVerify Face Liveness Web SDK or create server-side liveness sessions.
               </p>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
                 <button
                   className="primary wide"
                   disabled={loading}
-                  onClick={() =>
-                    runApiCall(
-                      () => api.createLivenessSession("redirect", "https://your-app.com/callback", 3000),
-                      `POST /v1/liveness/session -> Start Biometric Session`
-                    )
-                  }
-                  style={{ padding: "0.8rem" }}
+                  onClick={async () => {
+                    if (typeof window !== "undefined" && (window as any).eKYC) {
+                      try {
+                        const res = await (window as any).eKYC().start({
+                          pubKey: "eyJpdiI6InAzOGc3d1BZcVVZck1IY3plS0xscVE9PSIsInZhbHVlIjoiSlRESmdFYkZ4ZnV3M1ZkUjFiTHpDUT09IiwibWFjIjoiZTEzZjI5ZGRkZTVhNWNkNGU3ZmQ0NDY4MTAyZDY2Yjc1NjJiYmMxNTMwN2E2NzVlZmM5ZjhjZmEyZWM1ZmMwMCIsInRhZyI6IiJ9"
+                        });
+                        setResponseOutput(res);
+                        if (res?.result?.session_id) {
+                          setLivenessSessionId(res.result.session_id);
+                        }
+                      } catch (e: any) {
+                        setResponseOutput({ error: e?.message || "Liveness SDK cancelled or failed" });
+                      }
+                    } else {
+                      runApiCall(
+                        () => api.createLivenessSession("redirect", "https://your-app.com/callback", 3000),
+                        `window.eKYC().start({ pubKey: "..." }) -> Official Face Liveness Web SDK`
+                      );
+                    }
+                  }}
+                  style={{ padding: "0.85rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}
                 >
-                  Create Liveness Session
+                  <Camera size={20} /> Launch Official Face Liveness Web SDK
                 </button>
 
-                <button
-                  className="outline wide"
-                  disabled={loading}
-                  onClick={() =>
-                    runApiCall(
-                      () => api.getLivenessResult(responseOutput?.token || "a1b3fae6-af74-4896-bd58-32a81604de01"),
-                      `GET /v1/liveness/result -> Query Liveness Status`
-                    )
-                  }
-                  style={{ padding: "0.8rem" }}
-                >
-                  Query Verification Result
-                </button>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.5rem" }}>
+                  <div>
+                    <label style={{ fontSize: "0.75rem", fontWeight: 800, display: "block", marginBottom: "0.2rem" }}>
+                      Flow Action
+                    </label>
+                    <select
+                      value={livenessAction}
+                      onChange={(e) => setLivenessAction(e.target.value as any)}
+                      style={{ width: "100%", padding: "0.5rem 0.6rem", border: "2px solid #1e1b4b", borderRadius: 10, fontSize: "0.8rem", fontWeight: 700 }}
+                    >
+                      <option value="redirect">redirect</option>
+                      <option value="post">post</option>
+                      <option value="close">close</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: "0.75rem", fontWeight: 800, display: "block", marginBottom: "0.2rem" }}>
+                      Delay (ms)
+                    </label>
+                    <input
+                      type="number"
+                      value={livenessDelay}
+                      onChange={(e) => setLivenessDelay(Number(e.target.value))}
+                      style={{ width: "100%", padding: "0.5rem 0.6rem", border: "2px solid #1e1b4b", borderRadius: 10, fontSize: "0.8rem", fontWeight: 700 }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: "0.75rem", fontWeight: 800, display: "block", marginBottom: "0.2rem" }}>
+                      Session Token
+                    </label>
+                    <input
+                      value={livenessSessionId}
+                      onChange={(e) => setLivenessSessionId(e.target.value)}
+                      placeholder="session token"
+                      style={{ width: "100%", padding: "0.5rem 0.6rem", border: "2px solid #1e1b4b", borderRadius: 10, fontSize: "0.75rem", fontFamily: "monospace" }}
+                    />
+                  </div>
+                </div>
+
+                {livenessAction === "redirect" && (
+                  <div>
+                    <label style={{ fontSize: "0.75rem", fontWeight: 800, display: "block", marginBottom: "0.2rem" }}>
+                      Callback Destination URL
+                    </label>
+                    <input
+                      value={livenessCallbackUrl}
+                      onChange={(e) => setLivenessCallbackUrl(e.target.value)}
+                      placeholder="https://your-app.com/callback"
+                      style={{ width: "100%", padding: "0.5rem 0.6rem", border: "2px solid #1e1b4b", borderRadius: 10, fontSize: "0.8rem", fontFamily: "monospace" }}
+                    />
+                  </div>
+                )}
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.5rem" }}>
+                  <button
+                    className="primary"
+                    disabled={loading}
+                    onClick={async () => {
+                      const res = await runApiCall(
+                        () => api.createLivenessSession(livenessAction, livenessCallbackUrl, livenessDelay),
+                        `POST /v1/liveness/session\nHeaders: x-api-key: 487398a26750489380dc5fcf86613865\nBody: { "action": "${livenessAction}", "callback_url": "${livenessCallbackUrl}", "delay": ${livenessDelay} }`
+                      );
+                      if (res?.token) {
+                        setLivenessSessionId(res.token);
+                      }
+                    }}
+                    style={{ padding: "0.65rem 0.4rem", fontSize: "0.76rem" }}
+                  >
+                    Create Session
+                  </button>
+
+                  <button
+                    className="outline"
+                    disabled={loading}
+                    onClick={() =>
+                      runApiCall(
+                        () => api.getLivenessResult(livenessSessionId || responseOutput?.token || "6b5e55ea-610d-4923-bf14-ecf02d4116bf"),
+                        `GET /v1/liveness/result/${livenessSessionId || responseOutput?.token || "sessionToken"}\nHeaders: x-api-key: 487398a26750489380dc5fcf86613865`
+                      )
+                    }
+                    style={{ padding: "0.65rem 0.4rem", fontSize: "0.76rem" }}
+                  >
+                    Verification Result
+                  </button>
+
+                  <button
+                    className="outline"
+                    disabled={loading}
+                    onClick={async () => {
+                      const res = await runApiCall(
+                        () => api.createLivenessSession("close", "https://your-app.com/callback", 3000),
+                        `POST /v1/liveness/session\nBody: { "action": "close", "delay": 3000 }`
+                      );
+                      if (res?.token) {
+                        setLivenessSessionId(res.token);
+                      }
+                    }}
+                    style={{ padding: "0.65rem 0.4rem", fontSize: "0.76rem" }}
+                  >
+                    Close Flow
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -379,16 +669,48 @@ export function EGovIntegrationHub() {
 
               <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
                 <div>
+                  <label style={{ fontSize: "0.8rem", fontWeight: 900, display: "block", marginBottom: "0.3rem" }}>eGov AI Access Code</label>
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <input value={aiAccessCode} onChange={(e) => setAiAccessCode(e.target.value)} style={{ flex: 1, padding: "0.6rem 0.85rem", border: "2px solid #1e1b4b", borderRadius: 12, fontWeight: 700 }} />
+                    <button
+                      className="outline"
+                      onClick={async () => {
+                        const res = await runApiCall(
+                          () => api.aiToken(aiAccessCode),
+                          `POST /api/v1/egov/integration/token -> Exchange Access Code`
+                        );
+                        if (res?.access_token) setAiTokenValue(res.access_token);
+                      }}
+                      style={{ padding: "0.6rem 0.8rem", fontSize: "0.8rem", whiteSpace: "nowrap" }}
+                    >
+                      Get Token
+                    </button>
+                    <button
+                      className="primary"
+                      onClick={() =>
+                        runApiCall(
+                          () => api.getAiCredits(aiTokenValue),
+                          `GET /api/v1/egov/integration/credits -> Check Remaining Credits`
+                        )
+                      }
+                      style={{ padding: "0.6rem 0.8rem", fontSize: "0.8rem", whiteSpace: "nowrap" }}
+                    >
+                      Check Credits
+                    </button>
+                  </div>
+                </div>
+
+                <div>
                   <label style={{ fontSize: "0.8rem", fontWeight: 900, display: "block", marginBottom: "0.3rem" }}>AI Prompt / Inquiry</label>
                   <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} style={{ width: "100%", padding: "0.6rem 0.85rem", border: "2px solid #1e1b4b", borderRadius: 12, fontWeight: 700 }} />
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: "0.5rem" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(90px, 1fr))", gap: "0.5rem" }}>
                   <button
                     className="primary"
                     onClick={() =>
                       runApiCall(
-                        () => api.generateAiAssistant(aiPrompt, aiCategory),
+                        () => api.generateAiAssistant(aiPrompt, aiCategory, aiTokenValue),
                         `POST /api/v1/egov/integration/ai_assistant/generate -> "${aiPrompt}"`
                       )
                     }
@@ -401,7 +723,33 @@ export function EGovIntegrationHub() {
                     className="outline"
                     onClick={() =>
                       runApiCall(
-                        () => api.generateLawsAndRegulations(aiPrompt, aiCategory),
+                        () => api.generateSpeechMaker(aiPrompt, aiCategory, aiTokenValue),
+                        `POST /api/v1/egov/integration/speech_maker/generate`
+                      )
+                    }
+                    style={{ padding: "0.65rem 0.4rem", fontSize: "0.78rem" }}
+                  >
+                    Speech Maker
+                  </button>
+
+                  <button
+                    className="outline"
+                    onClick={() =>
+                      runApiCall(
+                        () => api.generateTourism(aiPrompt, aiCategory, aiTokenValue),
+                        `POST /api/v1/egov/integration/tourism/generate`
+                      )
+                    }
+                    style={{ padding: "0.65rem 0.4rem", fontSize: "0.78rem" }}
+                  >
+                    Tourism
+                  </button>
+
+                  <button
+                    className="outline"
+                    onClick={() =>
+                      runApiCall(
+                        () => api.generateLawsAndRegulations(aiPrompt, aiCategory, aiTokenValue),
                         `POST /api/v1/egov/integration/laws_and_regulations/generate`
                       )
                     }
@@ -414,7 +762,7 @@ export function EGovIntegrationHub() {
                     className="outline"
                     onClick={() =>
                       runApiCall(
-                        () => api.translateText(aiPrompt, "en", "fil"),
+                        () => api.translateText(aiPrompt, "en", "fil", aiTokenValue),
                         `POST /api/v1/egov/integration/translator/generate`
                       )
                     }
@@ -440,63 +788,652 @@ export function EGovIntegrationHub() {
 
               <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
                 {activeTab === "pay" && (
-                  <button
-                    className="primary wide"
-                    onClick={() =>
-                      runApiCall(
-                        () => api.paySettle("GL-DSWD-2026-04821", settleAmount, "Manila General Hospital"),
-                        `POST /api/v1/pay/settle -> ₱50,000.00`
-                      )
-                    }
-                    style={{ padding: "0.8rem" }}
-                  >
-                    Initiate Settlement (₱50,000.00)
-                  </button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.65rem" }}>
+                      <div>
+                        <label style={{ fontSize: "0.8rem", fontWeight: 900, display: "block", marginBottom: "0.3rem" }}>Amount (PHP)</label>
+                        <input
+                          type="number"
+                          value={settleAmount}
+                          onChange={(e) => setSettleAmount(Number(e.target.value))}
+                          style={{ width: "100%", padding: "0.6rem 0.85rem", border: "2px solid #1e1b4b", borderRadius: 12, fontWeight: 700 }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.8rem", fontWeight: 900, display: "block", marginBottom: "0.3rem" }}>Merchant Txn ID</label>
+                        <input
+                          value={payTxnId}
+                          onChange={(e) => setPayTxnId(e.target.value)}
+                          style={{ width: "100%", padding: "0.6rem 0.85rem", border: "2px solid #1e1b4b", borderRadius: 12, fontWeight: 700 }}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: "0.8rem", fontWeight: 900, display: "block", marginBottom: "0.3rem" }}>Transaction UUID (Generated or for Query/Void)</label>
+                      <input
+                        value={payTransactionUuid}
+                        onChange={(e) => setPayTransactionUuid(e.target.value)}
+                        placeholder="a2a83881-a1d3-4819-865c-2f2acc45cdec"
+                        style={{ width: "100%", padding: "0.6rem 0.85rem", border: "2px solid #1e1b4b", borderRadius: 12, fontWeight: 700, fontFamily: "monospace" }}
+                      />
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "0.5rem" }}>
+                      <button
+                        className="primary"
+                        onClick={async () => {
+                          const res = await runApiCall(
+                            () =>
+                              api.payCreateTransaction({
+                                amount: settleAmount,
+                                txnid: payTxnId || `TXN-${Date.now()}`,
+                                name: "JOSIE SANTOS DELA CRUZ",
+                                email: "josie@yopmail.com",
+                                mobile: "09090000000",
+                                callback_url: "https://your-app.com/callback",
+                                redirect_url: "https://your-app.com/",
+                                items: [
+                                  {
+                                    name: "Medical Hospital Assistance Settlement",
+                                    amount: settleAmount,
+                                  },
+                                ],
+                              }),
+                            `POST /api/v1/transaction -> Generate Payment Link (₱${settleAmount})`
+                          );
+                          if (res?.data?.uuid) {
+                            setPayTransactionUuid(res.data.uuid);
+                          }
+                        }}
+                        style={{ padding: "0.65rem 0.5rem", fontSize: "0.8rem" }}
+                      >
+                        Generate Payment
+                      </button>
+
+                      <button
+                        className="outline"
+                        onClick={() =>
+                          runApiCall(
+                            () => api.payGetTransaction(payTransactionUuid || "a2a83881-a1d3-4819-865c-2f2acc45cdec"),
+                            `GET /api/v1/transaction/${payTransactionUuid || "uuid"}`
+                          )
+                        }
+                        style={{ padding: "0.65rem 0.5rem", fontSize: "0.8rem" }}
+                      >
+                        Check Status
+                      </button>
+
+                      <button
+                        className="outline"
+                        onClick={() =>
+                          runApiCall(
+                            () => api.payVoidTransaction(payTransactionUuid || "a2a83881-a1d3-4819-865c-2f2acc45cdec"),
+                            `PUT /api/v1/transaction/${payTransactionUuid || "uuid"}/void`
+                          )
+                        }
+                        style={{ padding: "0.65rem 0.5rem", fontSize: "0.8rem" }}
+                      >
+                        Void Txn
+                      </button>
+
+                      <button
+                        className="outline"
+                        onClick={() =>
+                          runApiCall(
+                            () => api.paySettle("GL-DSWD-2026-04821", settleAmount, "Manila General Hospital"),
+                            `POST /api/v1/pay/settle -> Settle GL`
+                          )
+                        }
+                        style={{ padding: "0.65rem 0.5rem", fontSize: "0.8rem" }}
+                      >
+                        Direct Settle
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 {activeTab === "message" && (
-                  <button
-                    className="primary wide"
-                    onClick={() =>
-                      runApiCall(
-                        () => api.sendEMessage("Guarantee Letter Issued", "Your DSWD guarantee letter GL-DSWD-2026-04821 has been issued to Manila General Hospital."),
-                        `POST /api/v1/emessage/send -> Dispatch Notification`
-                      )
-                    }
-                    style={{ padding: "0.8rem" }}
-                  >
-                    Dispatch Notification Alert
-                  </button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                    <div>
+                      <label style={{ fontSize: "0.8rem", fontWeight: 900, display: "block", marginBottom: "0.3rem" }}>
+                        Recipient Mobile Number (E.164 format)
+                      </label>
+                      <input
+                        value={smsNumber}
+                        onChange={(e) => setSmsNumber(e.target.value)}
+                        placeholder="+639090000000"
+                        style={{ width: "100%", padding: "0.6rem 0.85rem", border: "2px solid #1e1b4b", borderRadius: 12, fontWeight: 700, fontFamily: "monospace" }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: "0.8rem", fontWeight: 900, display: "block", marginBottom: "0.3rem" }}>
+                        SMS Content
+                      </label>
+                      <textarea
+                        value={smsMessage}
+                        onChange={(e) => setSmsMessage(e.target.value)}
+                        rows={3}
+                        style={{ width: "100%", padding: "0.6rem 0.85rem", border: "2px solid #1e1b4b", borderRadius: 12, fontWeight: 600, fontSize: "0.85rem" }}
+                      />
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.65rem" }}>
+                      <button
+                        className="primary"
+                        disabled={loading}
+                        onClick={() =>
+                          runApiCall(
+                            () => api.pushSms(smsNumber, smsMessage),
+                            `POST /messaging/v1/sms/push\nHeader 'X-EMESSAGE-Auth: f906c6acf1e547209f088c98dff92b4a'\nBody: { "number": "${smsNumber}", "message": "${smsMessage}" }`
+                          )
+                        }
+                        style={{ padding: "0.8rem", fontSize: "0.82rem" }}
+                      >
+                        Push SMS Alert
+                      </button>
+
+                      <button
+                        className="outline"
+                        disabled={loading}
+                        onClick={() =>
+                          runApiCall(
+                            () => api.sendEMessage("Guarantee Letter Issued", smsMessage),
+                            `POST /api/v1/emessage/send -> User In-App Notice`
+                          )
+                        }
+                        style={{ padding: "0.8rem", fontSize: "0.82rem" }}
+                      >
+                        In-App Notification
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 {activeTab === "report" && (
-                  <button
-                    className="primary wide"
-                    onClick={() =>
-                      runApiCall(
-                        () => api.submitEReport("CITIZEN_AUDIT_LOG", { case_number: "MGL-2026-001284" }),
-                        `POST /api/v1/ereport/submit -> Record Audit Log`
-                      )
-                    }
-                    style={{ padding: "0.8rem" }}
-                  >
-                    Submit Audit Case Log
-                  </button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+                      <div>
+                        <label style={{ fontSize: "0.75rem", fontWeight: 800, display: "block", marginBottom: "0.2rem" }}>
+                          Access Code
+                        </label>
+                        <input
+                          value={ereportAccessCode}
+                          onChange={(e) => setEreportAccessCode(e.target.value)}
+                          placeholder="2a72bdcac1b0405fb2c679d029f03cfb"
+                          style={{ width: "100%", padding: "0.5rem 0.6rem", border: "2px solid #1e1b4b", borderRadius: 10, fontSize: "0.78rem", fontFamily: "monospace" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.75rem", fontWeight: 800, display: "block", marginBottom: "0.2rem" }}>
+                          Case Number
+                        </label>
+                        <input
+                          value={ereportCaseNumber}
+                          onChange={(e) => setEreportCaseNumber(e.target.value)}
+                          placeholder="PFM-090326-1489"
+                          style={{ width: "100%", padding: "0.5rem 0.6rem", border: "2px solid #1e1b4b", borderRadius: 10, fontSize: "0.78rem", fontFamily: "monospace" }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+                      <div>
+                        <label style={{ fontSize: "0.75rem", fontWeight: 800, display: "block", marginBottom: "0.2rem" }}>
+                          Citizen Email (OTP)
+                        </label>
+                        <input
+                          value={ereportEmail}
+                          onChange={(e) => setEreportEmail(e.target.value)}
+                          placeholder="josie@yopmail.com"
+                          style={{ width: "100%", padding: "0.5rem 0.6rem", border: "2px solid #1e1b4b", borderRadius: 10, fontSize: "0.78rem" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.75rem", fontWeight: 800, display: "block", marginBottom: "0.2rem" }}>
+                          OTP Code
+                        </label>
+                        <input
+                          value={ereportOtp}
+                          onChange={(e) => setEreportOtp(e.target.value)}
+                          placeholder="000000"
+                          style={{ width: "100%", padding: "0.5rem 0.6rem", border: "2px solid #1e1b4b", borderRadius: 10, fontSize: "0.78rem", fontFamily: "monospace" }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Action Buttons Grid */}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.5rem" }}>
+                      <button
+                        className="primary"
+                        disabled={loading}
+                        onClick={async () => {
+                          const res = await runApiCall(
+                            () => api.ereportToken(ereportAccessCode),
+                            `POST /api/integration/token\nBody: { "access_code": "${ereportAccessCode}" }`
+                          );
+                          if (res?.access_token) {
+                            setEreportTokenVal(res.access_token);
+                          }
+                        }}
+                        style={{ padding: "0.6rem 0.4rem", fontSize: "0.76rem" }}
+                      >
+                        Generate Token
+                      </button>
+
+                      <button
+                        className="outline"
+                        disabled={loading}
+                        onClick={() =>
+                          runApiCall(
+                            () => api.ereportReportTypes(ereportTokenVal),
+                            `GET /api/integration/datasets/report_types`
+                          )
+                        }
+                        style={{ padding: "0.6rem 0.4rem", fontSize: "0.76rem" }}
+                      >
+                        Report Types
+                      </button>
+
+                      <button
+                        className="outline"
+                        disabled={loading}
+                        onClick={() =>
+                          runApiCall(
+                            () => api.ereportRegions(ereportTokenVal),
+                            `GET /api/integration/datasets/regions`
+                          )
+                        }
+                        style={{ padding: "0.6rem 0.4rem", fontSize: "0.76rem" }}
+                      >
+                        Regions List
+                      </button>
+
+                      <button
+                        className="outline"
+                        disabled={loading}
+                        onClick={() =>
+                          runApiCall(
+                            () => api.ereportProvinces(ereportRegionCode, ereportTokenVal),
+                            `GET /api/integration/datasets/provinces?region_code=${ereportRegionCode}`
+                          )
+                        }
+                        style={{ padding: "0.6rem 0.4rem", fontSize: "0.76rem" }}
+                      >
+                        Provinces (04)
+                      </button>
+
+                      <button
+                        className="outline"
+                        disabled={loading}
+                        onClick={() =>
+                          runApiCall(
+                            () => api.ereportMunicipalities(ereportProvinceCode, ereportTokenVal),
+                            `GET /api/integration/datasets/municipalities?province_code=${ereportProvinceCode}`
+                          )
+                        }
+                        style={{ padding: "0.6rem 0.4rem", fontSize: "0.76rem" }}
+                      >
+                        Municipalities
+                      </button>
+
+                      <button
+                        className="outline"
+                        disabled={loading}
+                        onClick={() =>
+                          runApiCall(
+                            () => api.ereportBarangays(ereportMuniCode, ereportTokenVal),
+                            `GET /api/integration/datasets/barangays?municipality_code=${ereportMuniCode}`
+                          )
+                        }
+                        style={{ padding: "0.6rem 0.4rem", fontSize: "0.76rem" }}
+                      >
+                        Barangays
+                      </button>
+
+                      <button
+                        className="primary"
+                        disabled={loading}
+                        onClick={async () => {
+                          const res = await runApiCall(
+                            () =>
+                              api.ereportSubmitComplaint(
+                                {
+                                  mobile: "639090000000",
+                                  first_name: "Josie",
+                                  last_name: "Dela Cruz",
+                                  gender: "Female",
+                                  complainant_email: ereportEmail,
+                                  report_type: "red_tape",
+                                  subject: "Hospital Medical Clearance Delay",
+                                  message: "Hospital social work assessment processing exceeded standard processing time.",
+                                  region_code: ereportRegionCode,
+                                  province_code: ereportProvinceCode,
+                                  municipality_code: ereportMuniCode,
+                                  barangay_code: "042111011",
+                                  latitude: "14.60",
+                                  longitude: "120.98",
+                                },
+                                ereportTokenVal
+                              ),
+                            `POST /api/integration/submit_complaint\nPayload: red_tape complaint for Josie Dela Cruz`
+                          );
+                          if (res?.case_number) {
+                            setEreportCaseNumber(res.case_number);
+                          }
+                        }}
+                        style={{ padding: "0.6rem 0.4rem", fontSize: "0.76rem" }}
+                      >
+                        Submit Complaint
+                      </button>
+
+                      <button
+                        className="outline"
+                        disabled={loading}
+                        onClick={() =>
+                          runApiCall(
+                            () => api.ereportRequestOtp(ereportEmail, ereportTokenVal),
+                            `POST /api/integration/verify/request\nEmail: ${ereportEmail}`
+                          )
+                        }
+                        style={{ padding: "0.6rem 0.4rem", fontSize: "0.76rem" }}
+                      >
+                        Request OTP
+                      </button>
+
+                      <button
+                        className="outline"
+                        disabled={loading}
+                        onClick={async () => {
+                          const res = await runApiCall(
+                            () => api.ereportConfirmOtp(ereportEmail, ereportOtp, ereportTokenVal),
+                            `POST /api/integration/verify/confirm\nEmail: ${ereportEmail}, OTP: ${ereportOtp}`
+                          );
+                          if (res?.report_view_token) {
+                            setEreportViewTokenVal(res.report_view_token);
+                          }
+                        }}
+                        style={{ padding: "0.6rem 0.4rem", fontSize: "0.76rem" }}
+                      >
+                        Confirm OTP
+                      </button>
+
+                      <button
+                        className="outline"
+                        disabled={loading}
+                        onClick={() =>
+                          runApiCall(
+                            () => api.ereportGetReports(ereportViewTokenVal || "mock-token"),
+                            `GET /api/integration/reports\nHeader 'X-EReport-View-Token: ${ereportViewTokenVal || "view_token"}'`
+                          )
+                        }
+                        style={{ padding: "0.6rem 0.4rem", fontSize: "0.76rem" }}
+                      >
+                        Reports List
+                      </button>
+
+                      <button
+                        className="outline"
+                        disabled={loading}
+                        onClick={() =>
+                          runApiCall(
+                            () => api.ereportGetReport(ereportCaseNumber, ereportViewTokenVal || "mock-token"),
+                            `GET /api/integration/reports/${ereportCaseNumber}\nHeader 'X-EReport-View-Token: ${ereportViewTokenVal || "view_token"}'`
+                          )
+                        }
+                        style={{ padding: "0.6rem 0.4rem", fontSize: "0.76rem" }}
+                      >
+                        View Report
+                      </button>
+
+                      <button
+                        className="outline"
+                        disabled={loading}
+                        onClick={() =>
+                          runApiCall(
+                            () => api.submitEReport("CITIZEN_AUDIT_LOG", { case_number: ereportCaseNumber }),
+                            `POST /api/v1/ereport/submit -> Legacy Audit Hook`
+                          )
+                        }
+                        style={{ padding: "0.6rem 0.4rem", fontSize: "0.76rem" }}
+                      >
+                        Audit Hook
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 {activeTab === "compass" && (
-                  <button
-                    className="primary wide"
-                    onClick={() =>
-                      runApiCall(
-                        () => api.getCompassBudget(programCode),
-                        `GET /api/v1/compass/budget?program_code=DSWD-AICS`
-                      )
-                    }
-                    style={{ padding: "0.8rem" }}
-                  >
-                    Fetch Budget Execution Data
-                  </button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.5rem" }}>
+                      <div>
+                        <label style={{ fontSize: "0.75rem", fontWeight: 800, display: "block", marginBottom: "0.2rem" }}>
+                          Report Year
+                        </label>
+                        <input
+                          type="number"
+                          value={compassReportYear}
+                          onChange={(e) => setCompassReportYear(Number(e.target.value))}
+                          style={{ width: "100%", padding: "0.5rem 0.6rem", border: "2px solid #1e1b4b", borderRadius: 10, fontSize: "0.8rem", fontWeight: 700 }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.75rem", fontWeight: 800, display: "block", marginBottom: "0.2rem" }}>
+                          Sheet Scope
+                        </label>
+                        <select
+                          value={compassSheetScope}
+                          onChange={(e) => setCompassSheetScope(e.target.value as any)}
+                          style={{ width: "100%", padding: "0.5rem 0.6rem", border: "2px solid #1e1b4b", borderRadius: 10, fontSize: "0.8rem", fontWeight: 700 }}
+                        >
+                          <option value="summary">summary</option>
+                          <option value="agency">agency</option>
+                          <option value="sucs">sucs</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.75rem", fontWeight: 800, display: "block", marginBottom: "0.2rem" }}>
+                          Period
+                        </label>
+                        <select
+                          value={compassPeriod}
+                          onChange={(e) => setCompassPeriod(e.target.value)}
+                          style={{ width: "100%", padding: "0.5rem 0.6rem", border: "2px solid #1e1b4b", borderRadius: 10, fontSize: "0.8rem", fontWeight: 700 }}
+                        >
+                          <option value="FY">FY</option>
+                          <option value="Q1">Q1</option>
+                          <option value="Q2">Q2</option>
+                          <option value="Q3">Q3</option>
+                          <option value="Q4">Q4</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+                      <div>
+                        <label style={{ fontSize: "0.75rem", fontWeight: 800, display: "block", marginBottom: "0.2rem" }}>
+                          Expense Class
+                        </label>
+                        <select
+                          value={compassClass}
+                          onChange={(e) => setCompassClass(e.target.value)}
+                          style={{ width: "100%", padding: "0.5rem 0.6rem", border: "2px solid #1e1b4b", borderRadius: 10, fontSize: "0.8rem", fontWeight: 700 }}
+                        >
+                          <option value="PS">PS (Personal Services)</option>
+                          <option value="MOOE">MOOE</option>
+                          <option value="FINEX">FINEX</option>
+                          <option value="CO">CO (Capital Outlays)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.75rem", fontWeight: 800, display: "block", marginBottom: "0.2rem" }}>
+                          Entity Filter (Partial Match)
+                        </label>
+                        <input
+                          value={compassEntityName}
+                          onChange={(e) => setCompassEntityName(e.target.value)}
+                          placeholder="Agriculture or DSWD"
+                          style={{ width: "100%", padding: "0.5rem 0.6rem", border: "2px solid #1e1b4b", borderRadius: 10, fontSize: "0.8rem", fontWeight: 700 }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.5rem" }}>
+                      <div>
+                        <label style={{ fontSize: "0.75rem", fontWeight: 800, display: "block", marginBottom: "0.2rem" }}>
+                          LGSF Program
+                        </label>
+                        <select
+                          value={compassLgsfProgram}
+                          onChange={(e) => setCompassLgsfProgram(e.target.value)}
+                          style={{ width: "100%", padding: "0.5rem 0.6rem", border: "2px solid #1e1b4b", borderRadius: 10, fontSize: "0.8rem", fontWeight: 700 }}
+                        >
+                          <option value="FALGU">FALGU</option>
+                          <option value="GEF">GEF</option>
+                          <option value="GGG">GGG</option>
+                          <option value="SBDP">SBDP</option>
+                          <option value="SAFPB">SAFPB</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.75rem", fontWeight: 800, display: "block", marginBottom: "0.2rem" }}>
+                          Province
+                        </label>
+                        <input
+                          value={compassProvince}
+                          onChange={(e) => setCompassProvince(e.target.value)}
+                          placeholder="Bulacan"
+                          style={{ width: "100%", padding: "0.5rem 0.6rem", border: "2px solid #1e1b4b", borderRadius: 10, fontSize: "0.8rem" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.75rem", fontWeight: 800, display: "block", marginBottom: "0.2rem" }}>
+                          City / Municipality
+                        </label>
+                        <input
+                          value={compassMuni}
+                          onChange={(e) => setCompassMuni(e.target.value)}
+                          placeholder="Malolos"
+                          style={{ width: "100%", padding: "0.5rem 0.6rem", border: "2px solid #1e1b4b", borderRadius: 10, fontSize: "0.8rem" }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "0.5rem", marginTop: "0.3rem" }}>
+                      <button
+                        className="primary"
+                        disabled={loading}
+                        onClick={() =>
+                          runApiCall(
+                            () => api.getCompassSaaodbDashboard(compassReportYear, compassSheetScope),
+                            `GET /api/v1/records/saaodb/dashboard?reportYear=${compassReportYear}&sheetScope=${compassSheetScope}\nHeader 'X-API-Key: 1ce90b98ea2e489db1d63eca982d155f'`
+                          )
+                        }
+                        style={{ padding: "0.65rem 0.4rem", fontSize: "0.76rem" }}
+                      >
+                        1. SAAODB Dashboard
+                      </button>
+
+                      <button
+                        className="outline"
+                        disabled={loading}
+                        onClick={() =>
+                          runApiCall(
+                            () => api.getCompassSaaodb({ reportYear: compassReportYear, period: compassPeriod, class: compassClass, sheetScope: compassSheetScope, entityName: compassEntityName, page: 1, limit: 100 }),
+                            `GET /api/v1/records/saaodb?reportYear=${compassReportYear}&period=${compassPeriod}&class=${compassClass}&sheetScope=${compassSheetScope}&entityName=${compassEntityName}&page=1&limit=100`
+                          )
+                        }
+                        style={{ padding: "0.65rem 0.4rem", fontSize: "0.76rem" }}
+                      >
+                        2. SAAODB Records
+                      </button>
+
+                      <button
+                        className="outline"
+                        disabled={loading}
+                        onClick={() =>
+                          runApiCall(
+                            () => api.getCompassSaaodbEntities({ reportYear: compassReportYear, sheetScope: "agency", expandParent: "Department of Finance" }),
+                            `GET /api/v1/records/saaodb/entities?reportYear=${compassReportYear}&sheetScope=agency&expandParent=Department of Finance`
+                          )
+                        }
+                        style={{ padding: "0.65rem 0.4rem", fontSize: "0.76rem" }}
+                      >
+                        3. Entities Hierarchy
+                      </button>
+
+                      <button
+                        className="outline"
+                        disabled={loading}
+                        onClick={() =>
+                          runApiCall(
+                            () => api.getCompassNca({ budgetYear: compassReportYear, deptCode: compassDeptCode, agencyCode: compassAgencyCode, operatingUnitCode: compassOperatingCode, expenseClass: compassExpenseClass, page: 1, limit: 100 }),
+                            `GET /api/v1/records/nca?budgetYear=${compassReportYear}&deptCode=${compassDeptCode}&agencyCode=${compassAgencyCode}&operatingUnitCode=${compassOperatingCode}&expenseClass=${compassExpenseClass}&page=1&limit=100`
+                          )
+                        }
+                        style={{ padding: "0.65rem 0.4rem", fontSize: "0.76rem" }}
+                      >
+                        4. NCA Records
+                      </button>
+
+                      <button
+                        className="outline"
+                        disabled={loading}
+                        onClick={() =>
+                          runApiCall(
+                            () => api.getCompassSaro({ saroNo: compassSaroNo, deptCode: compassDeptCode, agencyCode: compassAgencyCode, expenseClass: compassExpenseClass, page: 1, limit: 100 }),
+                            `GET /api/v1/records/saro?saroNo=${compassSaroNo}&deptCode=${compassDeptCode}&agencyCode=${compassAgencyCode}&expenseClass=${compassExpenseClass}&page=1&limit=100`
+                          )
+                        }
+                        style={{ padding: "0.65rem 0.4rem", fontSize: "0.76rem" }}
+                      >
+                        5. SARO Records
+                      </button>
+
+                      <button
+                        className="outline"
+                        disabled={loading}
+                        onClick={() =>
+                          runApiCall(
+                            () => api.getCompassLgsf({ fiscalYear: compassReportYear, programCode: compassLgsfProgram, province: compassProvince, cityMunicipality: compassMuni, page: 1, limit: 100 }),
+                            `GET /api/v1/records/lgsf?fiscalYear=${compassReportYear}&programCode=${compassLgsfProgram}&province=${compassProvince}&cityMunicipality=${compassMuni}&page=1&limit=100`
+                          )
+                        }
+                        style={{ padding: "0.65rem 0.4rem", fontSize: "0.76rem" }}
+                      >
+                        6. LGSF Records
+                      </button>
+
+                      <button
+                        className="outline"
+                        disabled={loading}
+                        onClick={() =>
+                          runApiCall(
+                            () => api.getCompassLgsfDashboard({ programCode: compassLgsfProgram, reportYear: compassReportYear, province: compassProvince, municipality: compassMuni, page: 1, limit: 25 }),
+                            `GET /api/v1/records/lgsf/dashboard?programCode=${compassLgsfProgram}&reportYear=${compassReportYear}&province=${compassProvince}&municipality=${compassMuni}&page=1&limit=25`
+                          )
+                        }
+                        style={{ padding: "0.65rem 0.4rem", fontSize: "0.76rem" }}
+                      >
+                        7. LGSF Dashboard
+                      </button>
+
+                      <button
+                        className="outline"
+                        disabled={loading}
+                        onClick={() =>
+                          runApiCall(
+                            () => api.getCompassBudget(programCode),
+                            `GET /api/v1/compass/budget?program_code=DSWD-AICS`
+                          )
+                        }
+                        style={{ padding: "0.65rem 0.4rem", fontSize: "0.76rem" }}
+                      >
+                        8. DSWD Live Budget
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

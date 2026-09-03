@@ -257,7 +257,7 @@ export function ValidateView({ used, utilize, notify }: { used: number; utilize:
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span style={{ color: "#a5b4fc" }}>Settlement UUID:</span>
-                  <b style={{ color: "#34d399", fontFamily: "monospace" }}>{settlementData?.settlement_uuid || "a24d6045-cf2b-4bca-9072-865c352563f5"}</b>
+                  <b style={{ color: "#34d399", fontFamily: "monospace" }}>{settlementData?.settlement_uuid || "configured settlement reference"}</b>
                 </div>
               </div>
             </div>

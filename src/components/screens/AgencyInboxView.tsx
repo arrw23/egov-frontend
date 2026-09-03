@@ -236,7 +236,7 @@ export function AgencyInboxView({
               GAA 2026 DSWD AICS Medical Help Funds
             </h3>
           </div>
-          <Status tone="green">Compass API Active (dbm_live_571b...)</Status>
+          <Status tone="green">Compass API Active (configured server-side key)</Status>
         </div>
         <div
           className="formGrid"

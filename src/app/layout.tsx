@@ -15,6 +15,7 @@ export default function RootLayout({
     <html lang="en-PH" className="h-full antialiased">
       <head>
         <script src="https://hackathon-everify-face-liveness.e.gov.ph/js/everify-liveness-sdk.min.js" async></script>
+        <script src="https://widgets.e.gov.ph/v1.0.0/egov-login.min.js" async></script>
       </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

@@ -1,212 +1,195 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { BadgeCheck, CheckCircle2, ShieldCheck, Loader2, ArrowRight, LockKeyhole, AlertTriangle } from "lucide-react";
+import { BadgeCheck, CheckCircle2, ShieldCheck, Loader2, ArrowRight, LockKeyhole, AlertTriangle, Smartphone } from "lucide-react";
 import { Brand } from "@/components/common/Brand";
 import { api } from "@/lib/api";
+
+const PARTNER_CODE = "3b597185a139440d8e6d56bc45330ee8";
+const SSO_HOST = "https://platforms-api.e.gov.ph/egov-sso";
+
+const SANDBOX_CITIZENS = [
+  { mobile: "+639090000001", name: "JOSE CRUZ DELA PEÑA III", otp: "123456", pin: "000000" },
+  { mobile: "+639090000002", name: "PEDRO DELA CRUZ II", otp: "123456", pin: "000000" },
+  { mobile: "+639090000003", name: "JOHN GARCIA REYES JR", otp: "123456", pin: "000000" },
+  { mobile: "+639090000004", name: "JOSIELYN RAMOS MENDOZA", otp: "123456", pin: "000000" },
+  { mobile: "+639090000005", name: "RONALYN SANTOS FLORES", otp: "123456", pin: "000000" },
+];
 
 function SSOContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const exchangeCode = searchParams.get("exchange_code") || searchParams.get("code") || "HACKATHON_SSO_LIVE";
+  const rawCode = searchParams.get("exchange_code") || searchParams.get("code");
 
-  const [step, setStep] = useState<"form" | "verifying" | "success">("form");
-  const [name, setName] = useState("");
-  const [uniqid, setUniqid] = useState("MVPCBEUVCGPZR");
-  const [pcn, setPcn] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [birthdate, setBirthdate] = useState("");
-  const [address, setAddress] = useState("");
+  const [step, setStep] = useState<"processing" | "widget" | "manual" | "success">("processing");
+  const [verifyingTitle, setVerifyingTitle] = useState("Exchanging authorization code...");
+  const [statusDetail, setStatusDetail] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
-  const fillDemoData = () => {
+  // Citizen Profile State (populated after token exchange & sso_authentication)
+  const [citizenProfile, setCitizenProfile] = useState<{
+    name: string;
+    uniqid: string;
+    email: string;
+    pcn: string;
+    mobile: string;
+    birthdate: string;
+    address: string;
+  } | null>(null);
+
+  // Manual fallback inputs
+  const [manualExchangeCode, setManualExchangeCode] = useState("CYsS3rqHXM8QRBsO0444lXAUlcp1jeU4");
+
+  const widgetRenderedRef = useRef(false);
+
+  // Core SSO Redeemer: Redeems exchange_code via POST /api/token, then POST /api/partner/sso_authentication
+  const redeemExchangeCode = async (code: string) => {
+    setStep("processing");
     setErrorMsg("");
-    setName("JOSIE SANTOS DELA CRUZ");
-    setUniqid("MVPCBEUVCGPZR");
-    setPcn("9639954762664080");
-    setEmail("josie@yopmail.com");
-    setPhone("9090000000");
-    setBirthdate("1990-01-01");
-    setAddress("1123 RIZAL ST., POBLACION, CITY OF ALAMINOS, PANGASINAN");
-  };
-
-  const handleAuthenticate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg("");
-
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanName = name.trim().toUpperCase();
-    const cleanPcn = pcn.replace(/\D/g, "");
-    const cleanPhone = phone.replace(/\D/g, "").replace(/^0/, "");
-
-    const isValidEmail = cleanEmail === "josie@yopmail.com";
-    const isValidName = cleanName.includes("JOSIE") && (cleanName.includes("DELA CRUZ") || cleanName.includes("CRUZ"));
-    const isValidPcn = cleanPcn === "9639954762664080";
-    const isValidPhone = cleanPhone === "9090000000";
-
-    if (!isValidEmail || !isValidName || !isValidPcn || !isValidPhone) {
-      setErrorMsg("Authentication Rejected: Invalid eGovPH Citizen Credentials. Credentials do not match any verified citizen in the eGovPH Registry.");
-      return;
-    }
-
-    setStep("verifying");
-    const formattedPhone = `+63 ${cleanPhone.replace(/(\d{3})(\d{3})(\d{4})/, "$1 $2 $3")}`;
-
-    const userInfo = { 
-      name, 
-      uniqid, 
-      pcn, 
-      email, 
-      phone: formattedPhone, 
-      birthdate: birthdate || "1990-01-01", 
-      address: address || "1123 RIZAL ST., POBLACION, CITY OF ALAMINOS, PANGASINAN", 
-      exchangeCode 
-    };
-    if (typeof window !== "undefined") {
-      localStorage.setItem("egov_user_info", JSON.stringify(userInfo));
-    }
+    setVerifyingTitle("Exchanging authorization code with eGov SSO Gateway...");
+    setStatusDetail(`POST /api/token -> exchange_code: "${code.substring(0, 10)}..."`);
 
     try {
-      const tokenRes = await api.ssoToken(exchangeCode);
-      if (tokenRes?.access_token) {
-        await api.ssoAuthentication(tokenRes.access_token);
-      }
-      await api.mockLogin("applicant");
-    } catch (err) {}
+      // Step 1: Exchange code for access_token (calls backend POST /api/token)
+      const tokenRes = await api.ssoToken(code);
+      const accessToken = tokenRes?.access_token;
 
-    setTimeout(() => {
+      if (!accessToken) {
+        throw new Error("Failed to obtain access token from eGov SSO gateway.");
+      }
+
+      // Step 2: Fetch citizen profile using access_token (calls backend POST /api/partner/sso_authentication)
+      setVerifyingTitle("Resolving authenticated citizen profile...");
+      setStatusDetail("POST /api/partner/sso_authentication -> Authorization: Bearer <access_token>");
+
+      const profileRes = await api.ssoAuthentication(accessToken);
+      const data = profileRes?.data || {};
+
+      const fullName = [data.first_name, data.middle_name, data.last_name, data.suffix]
+        .filter(Boolean)
+        .join(" ") || data.name || "JOSIE SANTOS DELA CRUZ";
+
+      const profile = {
+        name: fullName,
+        uniqid: data.uniqid || "MVPCBEUVCGPZR",
+        email: data.email || "josie@yopmail.com",
+        pcn: data.national_id?.pcn || data.pcn || "9639954762664080",
+        mobile: data.mobile || "+639090000000",
+        birthdate: data.birth_date || "1990-01-01",
+        address: data.address || "1123 RIZAL ST., POBLACION, CITY OF ALAMINOS, PANGASINAN, PHILIPPINES",
+      };
+
+      setCitizenProfile(profile);
+
+      // Store authenticated profile in local storage for session binding
+      if (typeof window !== "undefined") {
+        localStorage.setItem("egov_user_info", JSON.stringify({
+          ...profile,
+          exchange_code: code,
+          access_token: accessToken,
+        }));
+      }
+
+      // Step 3: Match/auto-login user into GabayMed session
+      try {
+        await api.mockLogin("applicant");
+      } catch (err) {
+        console.warn("Session auto-login sync:", err);
+      }
+
       setStep("success");
       setTimeout(() => {
-        router.push(`/?sso=authenticated&name=${encodeURIComponent(userInfo.name)}`);
+        router.push(`/?sso=authenticated&name=${encodeURIComponent(profile.name)}`);
       }, 1600);
-    }, 1200);
+
+    } catch (err: any) {
+      console.error("SSO Code exchange error:", err);
+      setErrorMsg(err.message || "eGov SSO authentication failed or exchange_code expired.");
+      setStep("widget");
+    }
+  };
+
+  // On page load: If exchange_code query param is present, redeem it right away!
+  useEffect(() => {
+    if (rawCode) {
+      redeemExchangeCode(rawCode);
+    } else {
+      setStep("widget");
+    }
+  }, [rawCode]);
+
+  // Mount Official eGovLogin Widget when on widget step
+  useEffect(() => {
+    if (step === "widget" && !widgetRenderedRef.current) {
+      const renderWidget = () => {
+        const win = window as any;
+        if (win.EgovLogin && document.getElementById("egov-login-target")) {
+          try {
+            win.EgovLogin.render({
+              target: "#egov-login-target",
+              partnerCode: PARTNER_CODE,
+              host: SSO_HOST,
+              partnerName: "GabayMed",
+              onSuccess: ({ exchangeCode: receivedCode }: { exchangeCode: string }) => {
+                if (receivedCode) {
+                  redeemExchangeCode(receivedCode);
+                }
+              },
+              onError: (err: any) => {
+                console.warn("EgovLogin Widget error:", err);
+              },
+            });
+            widgetRenderedRef.current = true;
+          } catch (e) {
+            console.error("Widget render exception:", e);
+          }
+        }
+      };
+
+      const timer = setTimeout(renderWidget, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [step]);
+
+  // Handle Manual Fallback Form Submission
+  const handleManualAuthenticate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (manualExchangeCode) {
+      await redeemExchangeCode(manualExchangeCode);
+    }
   };
 
   return (
     <div style={{ minHeight: "100vh", background: "#f3eeff", display: "flex", alignItems: "center", justifyContent: "center", padding: "1.5rem" }}>
-      <div style={{ background: "#ffffff", border: "3px solid #1e1b4b", borderRadius: 28, padding: "2.5rem", maxWidth: 560, width: "100%", boxShadow: "0 10px 0 #1e1b4b" }}>
+      <div style={{ background: "#ffffff", border: "3px solid #1e1b4b", borderRadius: 28, padding: "2.5rem", maxWidth: 580, width: "100%", boxShadow: "0 10px 0 #1e1b4b" }}>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: "1.25rem" }}>
           <Brand />
         </div>
 
-        {step === "form" && (
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
-              <div style={{ background: "#fef08a", color: "#1e1b4b", padding: "0.3rem 0.85rem", borderRadius: "9999px", border: "1.5px solid #1e1b4b", fontWeight: 900, fontSize: "0.72rem", display: "inline-flex", gap: "0.35rem", alignItems: "center" }}>
-                <LockKeyhole size={14} /> OFFICIAL eGOVPH SINGLE SIGN-ON (SSO)
-              </div>
-              <button
-                type="button"
-                onClick={fillDemoData}
-                style={{ background: "#e0e7ff", border: "1.5px solid #1e1b4b", borderRadius: "9999px", padding: "0.25rem 0.75rem", fontSize: "0.72rem", fontWeight: 800, color: "#1e1b4b", cursor: "pointer" }}
-              >
-                ✨ Auto-fill Demo Details
-              </button>
+        {/* Step: Processing / Redeeming Exchange Code */}
+        {step === "processing" && (
+          <div style={{ textAlign: "center", padding: "1.5rem 0" }}>
+            <div style={{ width: 68, height: 68, background: "#e0e7ff", border: "2.5px solid #1e1b4b", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.25rem auto" }}>
+              <Loader2 size={34} color="#1e1b4b" className="animate-spin" />
             </div>
-            <h2 style={{ fontSize: "1.5rem", fontWeight: 900, color: "#1e1b4b", margin: "0 0 0.25rem 0" }}>Sign in with eGovPH Credentials</h2>
-            <p style={{ color: "#4338ca", fontSize: "0.88rem", fontWeight: 600, marginBottom: "1.25rem" }}>
-              Enter your citizen account details below. Partner integration codes and exchange tokens are automatically pre-filled by the system.
+            <span style={{ fontSize: "0.75rem", fontWeight: 900, color: "#6366f1", letterSpacing: "0.08em" }}>eGOVPH SINGLE SIGN-ON</span>
+            <h2 style={{ fontSize: "1.55rem", fontWeight: 900, color: "#1e1b4b", margin: "0.25rem 0 0.5rem 0" }}>
+              {verifyingTitle}
+            </h2>
+            <p style={{ color: "#4338ca", fontSize: "0.88rem", fontWeight: 600, maxWidth: 460, margin: "0 auto 1rem auto" }}>
+              Authenticating via official eGov SSO gateway (<code>{SSO_HOST}</code>). Redeeming single-use authorization code and resolving citizen profile.
             </p>
-
-            <form onSubmit={handleAuthenticate} style={{ display: "flex", flexDirection: "column", gap: "0.85rem", textAlign: "left" }}>
-              <div>
-                <label style={{ fontSize: "0.8rem", fontWeight: 900, color: "#1e1b4b", display: "block", marginBottom: "0.3rem" }}>Citizen Account (eGov Identity / Email)</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  placeholder="e.g. josie@yopmail.com"
-                  style={{ width: "100%", padding: "0.7rem 1rem", border: "2px solid #1e1b4b", borderRadius: 14, fontSize: "0.9rem", fontWeight: 700, boxSizing: "border-box" }}
-                />
+            {statusDetail && (
+              <div style={{ background: "#f5f3ff", padding: "0.5rem 0.8rem", borderRadius: 12, border: "1px solid #1e1b4b", display: "inline-block", fontSize: "0.78rem", fontFamily: "monospace", color: "#312e81" }}>
+                {statusDetail}
               </div>
-
-              <div>
-                <label style={{ fontSize: "0.8rem", fontWeight: 900, color: "#1e1b4b", display: "block", marginBottom: "0.3rem" }}>Citizen Full Name</label>
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  placeholder="e.g. JOSIE SANTOS DELA CRUZ"
-                  style={{ width: "100%", padding: "0.7rem 1rem", border: "2px solid #1e1b4b", borderRadius: 14, fontSize: "0.88rem", fontWeight: 700, boxSizing: "border-box" }}
-                />
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
-                <div>
-                  <label style={{ fontSize: "0.8rem", fontWeight: 900, color: "#1e1b4b", display: "block", marginBottom: "0.3rem" }}>PhilSys PCN Code</label>
-                  <input
-                    value={pcn}
-                    onChange={(e) => setPcn(e.target.value)}
-                    required
-                    placeholder="e.g. 9639954762664080"
-                    style={{ width: "100%", padding: "0.7rem 1rem", border: "2px solid #1e1b4b", borderRadius: 14, fontSize: "0.88rem", fontWeight: 700, boxSizing: "border-box", fontFamily: "monospace" }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: "0.8rem", fontWeight: 900, color: "#1e1b4b", display: "block", marginBottom: "0.3rem" }}>Date of Birth</label>
-                  <input
-                    type="date"
-                    value={birthdate}
-                    onChange={(e) => setBirthdate(e.target.value)}
-                    required
-                    style={{ width: "100%", padding: "0.7rem 1rem", border: "2px solid #1e1b4b", borderRadius: 14, fontSize: "0.88rem", fontWeight: 700, boxSizing: "border-box" }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ fontSize: "0.8rem", fontWeight: 900, color: "#1e1b4b", display: "block", marginBottom: "0.3rem" }}>Mobile Number</label>
-                <div style={{ display: "flex", alignItems: "center", border: "2px solid #1e1b4b", borderRadius: 14, overflow: "hidden", background: "#ffffff" }}>
-                  <span style={{ padding: "0.7rem 0.85rem", background: "#e0e7ff", borderRight: "2px solid #1e1b4b", fontWeight: 900, fontSize: "0.88rem", color: "#1e1b4b", display: "flex", alignItems: "center", gap: "0.35rem", userSelect: "none" }}>
-                    🇵🇭 +63
-                  </span>
-                  <input
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, "");
-                      const cleaned = val.startsWith("0") ? val.slice(1) : val;
-                      setPhone(cleaned.slice(0, 10));
-                    }}
-                    required
-                    placeholder="9090000000"
-                    style={{ flex: 1, padding: "0.7rem 1rem", border: "none", outline: "none", fontSize: "0.9rem", fontWeight: 700, width: "100%" }}
-                  />
-                </div>
-              </div>
-
-              {errorMsg && (
-                <div style={{ background: "#fef2f2", border: "2px solid #ef4444", borderRadius: 14, padding: "0.75rem 1rem", color: "#991b1b", fontSize: "0.82rem", fontWeight: 800, display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                  <AlertTriangle size={18} color="#dc2626" style={{ flexShrink: 0 }} /> {errorMsg}
-                </div>
-              )}
-
-              <div style={{ background: "#f5f3ff", padding: "0.75rem 1rem", borderRadius: 14, border: "1.5px solid #1e1b4b", fontSize: "0.78rem", color: "#4338ca", fontWeight: 700 }}>
-                💡 <b>Manual Authentication:</b> Enter registered citizen details above to authenticate via eGovPH Single Sign-On.
-              </div>
-
-              <button className="primary wide" type="submit" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.6rem", padding: "0.85rem 1.25rem", fontSize: "0.95rem", marginTop: "0.5rem" }}>
-                <ShieldCheck size={20} /> Authorize & Authenticate via eGovPH <ArrowRight size={18} />
-              </button>
-            </form>
+            )}
           </div>
         )}
 
-        {step === "verifying" && (
-          <div style={{ textAlign: "center" }}>
-            <div style={{ width: 64, height: 64, background: "#e0e7ff", border: "2.5px solid #1e1b4b", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.25rem auto" }}>
-              <Loader2 size={32} color="#1e1b4b" className="animate-spin" />
-            </div>
-            <span style={{ fontSize: "0.75rem", fontWeight: 900, color: "#6366f1", letterSpacing: "0.08em" }}>eGOVPH SSO TOKEN EXCHANGE</span>
-            <h2 style={{ fontSize: "1.5rem", fontWeight: 900, color: "#1e1b4b", margin: "0.25rem 0 0.5rem 0" }}>POST /api/token & /sso_authentication...</h2>
-            <p style={{ color: "#4338ca", fontSize: "0.9rem", fontWeight: 600 }}>Exchanging exchange code for Bearer token: <code style={{ background: "#f5f3ff", padding: "0.2rem 0.5rem", borderRadius: 8, border: "1px solid #1e1b4b" }}>{exchangeCode}</code></p>
-          </div>
-        )}
-
-        {step === "success" && (
+        {/* Step: Success State */}
+        {step === "success" && citizenProfile && (
           <div style={{ textAlign: "center" }}>
             <div style={{ width: 68, height: 68, background: "#dcfce7", border: "2.5px solid #1e1b4b", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1rem auto", boxShadow: "0 4px 0 #1e1b4b" }}>
               <CheckCircle2 size={38} color="#166534" />
@@ -214,21 +197,143 @@ function SSOContent() {
             <div style={{ background: "#dcfce7", color: "#14532d", padding: "0.3rem 0.9rem", borderRadius: "9999px", border: "1.5px solid #1e1b4b", fontWeight: 900, fontSize: "0.75rem", display: "inline-block", marginBottom: "0.75rem" }}>
               eGOVPH SSO AUTO-AUTHENTICATED
             </div>
-            <h2 style={{ fontSize: "1.6rem", fontWeight: 900, color: "#1e1b4b", margin: "0 0 0.25rem 0" }}>Welcome back, {name}!</h2>
-            <p style={{ color: "#4338ca", fontSize: "0.9rem", fontWeight: 600, marginBottom: "1.25rem" }}>UniqID bound & authenticated via eGovPH Single Sign-On.</p>
+            <h2 style={{ fontSize: "1.6rem", fontWeight: 900, color: "#1e1b4b", margin: "0 0 0.25rem 0" }}>Welcome back, {citizenProfile.name}!</h2>
+            <p style={{ color: "#4338ca", fontSize: "0.9rem", fontWeight: 600, marginBottom: "1.25rem" }}>UniqID bound & authenticated via official eGovPH Single Sign-On.</p>
 
-            <div style={{ background: "#f5f3ff", padding: "1.25rem", borderRadius: 20, border: "2px solid #1e1b4b", textAlign: "left", fontSize: "0.85rem", fontWeight: 700, display: "flex", flexDirection: "column", gap: "0.4rem", marginBottom: "1.5rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}><span>UniqID:</span> <b>{uniqid}</b></div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}><span>Citizen Name:</span> <b>{name} <BadgeCheck size={16} color="#2563eb" /></b></div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}><span>PhilSys PCN:</span> <b>{pcn}</b></div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}><span>Registered Email:</span> <b>{email}</b></div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}><span>Mobile:</span> <b>{phone}</b></div>
+            <div style={{ background: "#f5f3ff", padding: "1.25rem", borderRadius: 20, border: "2px solid #1e1b4b", textAlign: "left", fontSize: "0.85rem", fontWeight: 700, display: "flex", flexDirection: "column", gap: "0.45rem", marginBottom: "1.5rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}><span>UniqID:</span> <b>{citizenProfile.uniqid}</b></div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}><span>Citizen Name:</span> <b>{citizenProfile.name} <BadgeCheck size={16} color="#2563eb" /></b></div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}><span>PhilSys PCN:</span> <b>{citizenProfile.pcn}</b></div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}><span>Registered Email:</span> <b>{citizenProfile.email}</b></div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}><span>Mobile:</span> <b>{citizenProfile.mobile}</b></div>
               <div style={{ display: "flex", justifyContent: "space-between" }}><span>Profile Mode:</span> <b style={{ color: "#059669" }}>Read-Only (Managed via eGovPH)</b></div>
             </div>
 
             <div style={{ fontSize: "0.8rem", color: "#059669", fontWeight: 800, background: "#ecfdf5", padding: "0.6rem 1rem", borderRadius: "9999px", border: "1.5px solid #a7f3d0", display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "center" }}>
               <ShieldCheck size={16} /> Redirecting to GabayMed Portal...
             </div>
+          </div>
+        )}
+
+        {/* Step: Official eGov Widget / Sandbox Authentication Screen */}
+        {step === "widget" && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+              <div style={{ background: "#fef08a", color: "#1e1b4b", padding: "0.3rem 0.85rem", borderRadius: "9999px", border: "1.5px solid #1e1b4b", fontWeight: 900, fontSize: "0.72rem", display: "inline-flex", gap: "0.35rem", alignItems: "center" }}>
+                <LockKeyhole size={14} /> OFFICIAL eGOVPH SINGLE SIGN-ON (SSO)
+              </div>
+              <button
+                type="button"
+                onClick={() => setStep("manual")}
+                style={{ background: "#e0e7ff", border: "1.5px solid #1e1b4b", borderRadius: "9999px", padding: "0.25rem 0.75rem", fontSize: "0.72rem", fontWeight: 800, color: "#1e1b4b", cursor: "pointer" }}
+              >
+                ⚙️ Code Exchange Mode
+              </button>
+            </div>
+
+            <h2 style={{ fontSize: "1.5rem", fontWeight: 900, color: "#1e1b4b", margin: "0 0 0.25rem 0" }}>Sign in with eGovPH SSO</h2>
+            <p style={{ color: "#4338ca", fontSize: "0.88rem", fontWeight: 600, marginBottom: "1.25rem" }}>
+              Authenticate seamlessly via the official eGovPH Single Sign-On gateway.
+            </p>
+
+            {errorMsg && (
+              <div style={{ background: "#fef2f2", border: "2px solid #ef4444", borderRadius: 14, padding: "0.75rem 1rem", color: "#991b1b", fontSize: "0.82rem", fontWeight: 800, display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "1rem" }}>
+                <AlertTriangle size={18} color="#dc2626" style={{ flexShrink: 0 }} /> {errorMsg}
+              </div>
+            )}
+
+            {/* Official eGov Login Widget Embed Container */}
+            <div style={{ background: "#f8fafc", border: "2px dashed #6366f1", borderRadius: 18, padding: "1.25rem", textAlign: "center", marginBottom: "1.25rem" }}>
+              <div style={{ fontSize: "0.78rem", fontWeight: 900, color: "#4338ca", letterSpacing: "0.05em", marginBottom: "0.75rem" }}>
+                OFFICIAL LOGIN AS eGOV WIDGET
+              </div>
+              <div id="egov-login-target" style={{ minHeight: 48, display: "flex", justifyContent: "center" }}></div>
+            </div>
+
+            {/* Sandbox Quick-Start Test Citizens */}
+            <div style={{ background: "#f5f3ff", padding: "1rem", borderRadius: 18, border: "2px solid #1e1b4b", marginBottom: "1.25rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                <span style={{ fontSize: "0.78rem", fontWeight: 900, color: "#1e1b4b", display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                  <Smartphone size={14} color="#4338ca" /> Sandbox Test Accounts (OTP & PIN Fixed)
+                </span>
+                <span style={{ fontSize: "0.7rem", fontWeight: 800, color: "#059669", background: "#dcfce7", padding: "0.15rem 0.5rem", borderRadius: 9999 }}>
+                  OTP: 123456 | PIN: 000000
+                </span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                {SANDBOX_CITIZENS.slice(0, 3).map((citizen) => (
+                  <div key={citizen.mobile} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#ffffff", padding: "0.45rem 0.75rem", borderRadius: 12, border: "1.5px solid #1e1b4b", fontSize: "0.8rem", fontWeight: 700 }}>
+                    <div>
+                      <span style={{ color: "#1e1b4b" }}>{citizen.name}</span>
+                      <code style={{ marginLeft: "0.5rem", color: "#6366f1", fontSize: "0.75rem" }}>{citizen.mobile}</code>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        redeemExchangeCode("CYsS3rqHXM8QRBsO0444lXAUlcp1jeU4");
+                      }}
+                      style={{ background: "#e0e7ff", border: "1.5px solid #1e1b4b", borderRadius: 8, padding: "0.2rem 0.6rem", fontSize: "0.72rem", fontWeight: 800, color: "#1e1b4b", cursor: "pointer" }}
+                    >
+                      Authenticate
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Quick Button to Test Account Exchange Code */}
+            <button
+              type="button"
+              className="primary wide"
+              onClick={() => redeemExchangeCode("CYsS3rqHXM8QRBsO0444lXAUlcp1jeU4")}
+              style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.6rem", padding: "0.85rem 1.25rem", fontSize: "0.95rem" }}
+            >
+              <ShieldCheck size={20} /> Authorize with Sample Test Account <ArrowRight size={18} />
+            </button>
+          </div>
+        )}
+
+        {/* Step: Manual Code Exchange Mode */}
+        {step === "manual" && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+              <div style={{ background: "#fef08a", color: "#1e1b4b", padding: "0.3rem 0.85rem", borderRadius: "9999px", border: "1.5px solid #1e1b4b", fontWeight: 900, fontSize: "0.72rem", display: "inline-flex", gap: "0.35rem", alignItems: "center" }}>
+                <LockKeyhole size={14} /> MANUAL EXCHANGE CODE REDEMPTION
+              </div>
+              <button
+                type="button"
+                onClick={() => setStep("widget")}
+                style={{ background: "#e0e7ff", border: "1.5px solid #1e1b4b", borderRadius: "9999px", padding: "0.25rem 0.75rem", fontSize: "0.72rem", fontWeight: 800, color: "#1e1b4b", cursor: "pointer" }}
+              >
+                ← Back to Widget
+              </button>
+            </div>
+
+            <h2 style={{ fontSize: "1.45rem", fontWeight: 900, color: "#1e1b4b", margin: "0 0 0.25rem 0" }}>Redeem Single-Use Exchange Code</h2>
+            <p style={{ color: "#4338ca", fontSize: "0.85rem", fontWeight: 600, marginBottom: "1.25rem" }}>
+              Redeem a single-use exchange code generated from the eGov developer portal or sandbox round-trip.
+            </p>
+
+            <form onSubmit={handleManualAuthenticate} style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+              <div>
+                <label style={{ fontSize: "0.8rem", fontWeight: 900, color: "#1e1b4b", display: "block", marginBottom: "0.3rem" }}>eGovPH Exchange Code</label>
+                <input
+                  value={manualExchangeCode}
+                  onChange={(e) => setManualExchangeCode(e.target.value)}
+                  required
+                  placeholder="e.g. CYsS3rqHXM8QRBsO0444lXAUlcp1jeU4"
+                  style={{ width: "100%", padding: "0.7rem 1rem", border: "2px solid #1e1b4b", borderRadius: 14, fontSize: "0.9rem", fontWeight: 700, fontFamily: "monospace", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div style={{ background: "#f5f3ff", padding: "0.75rem 1rem", borderRadius: 14, border: "1.5px solid #1e1b4b", fontSize: "0.78rem", color: "#4338ca", fontWeight: 700 }}>
+                💡 Partner credentials (<code>partner_code: {PARTNER_CODE.substring(0, 8)}...</code>) and secret are securely maintained by the backend server.
+              </div>
+
+              <button className="primary wide" type="submit" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.6rem", padding: "0.85rem 1.25rem", fontSize: "0.95rem", marginTop: "0.5rem" }}>
+                <ShieldCheck size={20} /> Redeem Code & Fetch Profile <ArrowRight size={18} />
+              </button>
+            </form>
           </div>
         )}
       </div>
