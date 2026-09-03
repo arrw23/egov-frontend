@@ -105,6 +105,19 @@ export function VerifyView({
     setLivenessScanning(true);
     setErrorMsg("");
 
+    let activeSid = "";
+    try {
+      // 1. Create a fresh, live biometric session token via government backend API
+      const sessionRes = await api.createLivenessSession("redirect", typeof window !== "undefined" ? window.location.href : "https://your-app.com/callback", 3000);
+      if (sessionRes?.token) {
+        activeSid = sessionRes.token;
+        setLivenessSessionId(activeSid);
+      }
+    } catch (e) {
+      console.warn("Failed to create live liveness session, proceeding to fallback", e);
+    }
+
+    // 2. Try launching the official Web SDK if available in the browser window
     if (typeof window !== "undefined" && (window as any).eKYC) {
       try {
         const res = await (window as any).eKYC().start({
@@ -122,7 +135,7 @@ export function VerifyView({
       }
     }
 
-    // Fallback: In-app Biometric Camera Modal
+    // 3. Fallback to clean in-app Biometric Camera Modal with the fresh session ID
     setLivenessScanning(false);
     setShowCameraModal(true);
     setScanStep("initializing");

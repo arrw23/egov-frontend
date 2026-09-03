@@ -112,8 +112,10 @@ export function EGovIntegrationHub() {
     try {
       const res = await fn();
       setResponseOutput(res);
+      return res;
     } catch (err: any) {
       setResponseOutput({ error: err.message || "Request failed" });
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -608,17 +610,21 @@ export function EGovIntegrationHub() {
                     className="primary"
                     disabled={loading}
                     onClick={async () => {
-                      const res = await runApiCall(
-                        () => api.createLivenessSession(livenessAction, livenessCallbackUrl, livenessDelay),
-                        `POST /v1/liveness/session\nHeaders: x-api-key: 487398a26750489380dc5fcf86613865\nBody: { "action": "${livenessAction}", "callback_url": "${livenessCallbackUrl}", "delay": ${livenessDelay} }`
-                      );
-                      if (res?.token) {
-                        setLivenessSessionId(res.token);
+                      try {
+                        const res = await runApiCall(
+                          () => api.createLivenessSession(livenessAction, livenessCallbackUrl, livenessDelay),
+                          `POST /v1/liveness/session\nHeaders: x-api-key: 487398a26750489380dc5fcf86613865\nBody: { "action": "${livenessAction}", "callback_url": "${livenessCallbackUrl}", "delay": ${livenessDelay} }`
+                        );
+                        if (res?.token) {
+                          setLivenessSessionId(res.token);
+                        }
+                      } catch (e) {
+                        console.error("Failed to create liveness session", e);
                       }
                     }}
                     style={{ padding: "0.65rem 0.4rem", fontSize: "0.76rem" }}
                   >
-                    Create Session
+                    1. Create Session
                   </button>
 
                   <button
@@ -650,6 +656,20 @@ export function EGovIntegrationHub() {
                     style={{ padding: "0.65rem 0.4rem", fontSize: "0.76rem" }}
                   >
                     Close Flow
+                  </button>
+
+                  <button
+                    className="outline"
+                    disabled={loading || (!responseOutput?.url && !livenessSessionId)}
+                    onClick={() => {
+                      const targetUrl = responseOutput?.url || `https://hackathon-face-liveness.e.gov.ph/liveness?token=${livenessSessionId}&action=${livenessAction}&callbackUrl=${encodeURIComponent(livenessCallbackUrl)}&delay=${livenessDelay}`;
+                      if (typeof window !== "undefined") {
+                        window.open(targetUrl, "_blank", "width=600,height=750");
+                      }
+                    }}
+                    style={{ padding: "0.65rem 0.4rem", fontSize: "0.76rem", background: "#fef08a", color: "#713f12", fontWeight: 800 }}
+                  >
+                    Open Live Biometric Window
                   </button>
                 </div>
               </div>
