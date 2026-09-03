@@ -41,4 +41,9 @@ yarn-error.log*
 next-env.d.ts
 EGOV_APIS_SHOWCASE.md
 EGOV_APIS_SHOWCASE*.md
+docs/
+*demo*.html
+*DEMO*
+DEMO_SCRIPT*
+*.html
 
