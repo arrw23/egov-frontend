@@ -214,6 +214,18 @@ export const api = {
     }));
   },
 
+  async getAiCredits(token: string = ''): Promise<{ credits_total: number; credits_used: number; credits_remaining: number; expires_at: string }> {
+    return request<{ credits_total: number; credits_used: number; credits_remaining: number; expires_at: string }>('/api/v1/egov/integration/credits', {
+      method: 'GET',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }, true, () => ({
+      credits_total: 200,
+      credits_used: 1,
+      credits_remaining: 199,
+      expires_at: new Date(Date.now() + 172800000).toISOString(),
+    }));
+  },
+
   async generateAiAssistant(prompt: string, category: string = 'PH', token: string = ''): Promise<{ data: string; session_id: string }> {
     return request<{ data: string; session_id: string }>('/api/v1/egov/integration/ai_assistant/generate', {
       method: 'POST',
@@ -330,6 +342,47 @@ export const api = {
   },
 
   // --- 6. eGovPay ---
+  async payCreateTransaction(payload: any): Promise<any> {
+    return request<any>('/api/v1/transaction', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, true, () => ({
+      data: {
+        uuid: "a23977c3-f2f2-4e5c-bf53-94bcff48e49c",
+        url: "https://egovpay-pgi-dev.oueg.info/a23977c3-f2f2-4e5c-bf53-94bcff48e49c",
+        channel: {
+          refno: "0IOKUXQ5XX",
+        },
+      },
+    }));
+  },
+
+  async payGetTransaction(uuid: string): Promise<any> {
+    return request<any>(`/api/v1/transaction/${uuid}`, {
+      method: 'GET',
+    }, true, () => ({
+      data: {
+        uuid,
+        refno: "0IOKUXQ5XX",
+        txnid: "TESTREF123",
+        environment_type: "TEST",
+        amount: "1000.0000",
+        currency: "PHP",
+        payment_status: "INITIAL",
+      },
+    }));
+  },
+
+  async payVoidTransaction(uuid: string): Promise<any> {
+    return request<any>(`/api/v1/transaction/${uuid}/void`, {
+      method: 'PUT',
+    }, true, () => ({
+      data: {
+        message: "You have successfully voided this transaction.",
+      },
+    }));
+  },
+
   async paySettle(glNumber: string, amount: number, payeeOrganization: string): Promise<any> {
     return request<any>('/pay/settle', {
       method: 'POST',
@@ -345,6 +398,17 @@ export const api = {
   },
 
   // --- 7. eMessage ---
+  async pushSms(number: string, message: string): Promise<any> {
+    return request<any>('/messaging/v1/sms/push', {
+      method: 'POST',
+      body: JSON.stringify({ number, message }),
+    }, true, () => ({
+      data: {
+        message: "SMS was successfully created."
+      }
+    }));
+  },
+
   async sendEMessage(title: string, message: string): Promise<any> {
     return request<any>('/emessage/send', {
       method: 'POST',
