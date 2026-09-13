@@ -33,10 +33,12 @@ async function request<T>(endpoint: string, options: RequestInit = {}, useRoot: 
 
 export const api = {
   // --- 1. eGov SSO ---
-  async ssoToken(exchangeCode: string, partnerCode: string = 'HACKATHON_SSO', partnerSecret: string = '0d77fba530ee49f5b00e36fe947bd384'): Promise<{ access_token: string }> {
+  // Partner credentials are held server-side only (config/services.php).
+  // Sending them from the browser published them to every visitor.
+  async ssoToken(exchangeCode: string): Promise<{ access_token: string }> {
     return request<{ access_token: string }>('/api/token', {
       method: 'POST',
-      body: JSON.stringify({ exchange_code: exchangeCode, scope: 'SSO_AUTHENTICATION', partner_code: partnerCode, partner_secret: partnerSecret }),
+      body: JSON.stringify({ exchange_code: exchangeCode }),
     }, true, () => ({
       access_token: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczovL3N0Zy1zdXBlcmFwcC1zc28ub3VlZy5pbmZvIiwiaWF0IjoxNzgzMzk3NDEyLCJzY29wZSI6IlNTT19BVVRIRU5USUNBVElPTiIsInBjIjoiSEFDS0FUSE9OX1NTTyIsInRraSI6NjgsImp0aSI6Ik1WUENCRVVWQ0dQWlIiLCJleHAiOjE3ODM0MDEwMTJ9.zr4dq-hwNpVctc-Vm6j5cyVn98W0FOQS3fxY4UwNcE",
     }));
@@ -100,10 +102,11 @@ export const api = {
   },
 
   // --- 2. eVerify ---
-  async eVerifyAuth(clientId: string = 'a24bef86-8826-48f7-aac5-978ca5805c29', clientSecret: string = '1EQT3mEC8GqEYCcUufaylPewnWi052VcJdnAOmIPHFy5zbUv0JcqVEwf7DSeb1OB'): Promise<any> {
+  // Client credentials are held server-side only. The backend ignores any
+  // client-supplied values, so these were pure exposure.
+  async eVerifyAuth(): Promise<any> {
     return request<any>('/api/auth', {
       method: 'POST',
-      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }),
     }, true, () => ({
       data: {
         access_token: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOiJhMjRiZWY4Ni04ODI2LTQ4ZjctYWFjNS05NzhjYTU4MDVjMjkiLCJzY29wZSI6IkVWRVJJRllfUkVBRCIsImV4cCI6MTcyNDIyMzc3Mn0.sig",
@@ -182,10 +185,10 @@ export const api = {
   },
 
   // --- 3. Face Liveness ---
+  // x-api-key is injected server-side; it must never reach the browser bundle.
   async createLivenessSession(action: string = 'redirect', callbackUrl: string = 'https://your-app.com/callback', delay: number = 3000): Promise<{ token: string; url: string }> {
     return request<{ token: string; url: string }>('/v1/liveness/session', {
       method: 'POST',
-      headers: { 'x-api-key': '9e31b23d-eeb4-ae08-ff13-cdf8380e5307' },
       body: JSON.stringify({ action, callback_url: callbackUrl, delay }),
     }, true, () => ({
       token: "a1b3fae6-af74-4896-bd58-32a81604de01",
@@ -195,7 +198,7 @@ export const api = {
 
   async getLivenessResult(sessionToken: string): Promise<{ status: string; confidence_score: number; reference_image_url: string }> {
     return request<{ status: string; confidence_score: number; reference_image_url: string }>(`/v1/liveness/result/${sessionToken}`, {
-      headers: { 'x-api-key': '9e31b23d-eeb4-ae08-ff13-cdf8380e5307' },
+      method: 'GET',
     }, true, () => ({
       status: "SUCCEEDED",
       confidence_score: 98.71,
@@ -204,10 +207,10 @@ export const api = {
   },
 
   // --- 4. eGov AI ---
-  async aiToken(accessCode: string = 'f2c81ce889a5850fd59487ce988ec1324183682c62d300bdbd33d5064862942b'): Promise<{ access_token: string; expires_in_seconds: number }> {
+  // The access code is server-side configuration only.
+  async aiToken(): Promise<{ access_token: string; expires_in_seconds: number }> {
     return request<{ access_token: string; expires_in_seconds: number }>('/api/v1/egov/integration/token', {
       method: 'POST',
-      body: JSON.stringify({ access_code: accessCode }),
     }, true, () => ({
       access_token: "bebaddec-de7e-4d4e-91b1-ae3a73544b22",
       expires_in_seconds: 28800,
@@ -420,10 +423,10 @@ export const api = {
   },
 
   // --- 8. eReport ---
-  async ereportToken(accessCode: string = '2a72bdcac1b0405fb2c679d029f03cfb'): Promise<{ access_token: string; expires_at: string }> {
+  // The access code is server-side configuration only.
+  async ereportToken(): Promise<{ access_token: string; expires_at: string }> {
     return request<{ access_token: string; expires_at: string }>('/api/integration/token', {
       method: 'POST',
-      body: JSON.stringify({ access_code: accessCode }),
     }, true, () => ({
       access_token: 'mock-ereport-integration-token',
       expires_at: new Date(Date.now() + 172800000).toISOString(),
@@ -741,6 +744,18 @@ export const api = {
     }));  },
 
   // --- Core GabayMed Auth & Session ---
+  /**
+   * Redeems a single-use eGov SSO exchange code and signs in as the real
+   * citizen. No mock fallback on purpose: fabricating a successful SSO login
+   * would silently authenticate someone as the wrong person.
+   */
+  async exchangeEgovCode(exchangeCode: string): Promise<{ status: string; user: User; profile: any }> {
+    return request<{ status: string; user: User; profile: any }>('/auth/egov/exchange', {
+      method: 'POST',
+      body: JSON.stringify({ exchange_code: exchangeCode }),
+    });
+  },
+
   async getMe(): Promise<{ status: string; user: User }> {
     return request<{ status: string; user: User }>('/me', {}, false, () => ({
       status: "success",

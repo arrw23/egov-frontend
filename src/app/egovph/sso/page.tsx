@@ -43,59 +43,43 @@ function SSOContent() {
 
   const widgetRenderedRef = useRef(false);
 
-  // Core SSO Redeemer: Redeems exchange_code via POST /api/token, then POST /api/partner/sso_authentication
+  // Core SSO Redeemer: one call to POST /api/v1/auth/egov/exchange, which
+  // exchanges the code, resolves the real citizen profile server-side, upserts
+  // the user and returns them. Previously this exchanged the token and then
+  // signed in as the mock applicant regardless of who authenticated.
   const redeemExchangeCode = async (code: string) => {
     setStep("processing");
     setErrorMsg("");
     setVerifyingTitle("Exchanging authorization code with eGov SSO Gateway...");
-    setStatusDetail(`POST /api/token -> exchange_code: "${code.substring(0, 10)}..."`);
+    setStatusDetail(`POST /api/v1/auth/egov/exchange -> exchange_code: "${code.substring(0, 10)}..."`);
 
     try {
-      // Step 1: Exchange code for access_token (calls backend POST /api/token)
-      const tokenRes = await api.ssoToken(code);
-      const accessToken = tokenRes?.access_token;
-
-      if (!accessToken) {
-        throw new Error("Failed to obtain access token from eGov SSO gateway.");
-      }
-
-      // Step 2: Fetch citizen profile using access_token (calls backend POST /api/partner/sso_authentication)
-      setVerifyingTitle("Resolving authenticated citizen profile...");
-      setStatusDetail("POST /api/partner/sso_authentication -> Authorization: Bearer <access_token>");
-
-      const profileRes = await api.ssoAuthentication(accessToken);
-      const data = profileRes?.data || {};
+      const result = await api.exchangeEgovCode(code);
+      const data = result?.profile || {};
 
       const fullName = [data.first_name, data.middle_name, data.last_name, data.suffix]
         .filter(Boolean)
-        .join(" ") || data.name || "JOSIE SANTOS DELA CRUZ";
+        .join(" ") || result?.user?.name || "";
+
+      if (!fullName) {
+        throw new Error("eGov SSO returned a profile without a name.");
+      }
 
       const profile = {
         name: fullName,
-        uniqid: data.uniqid || "MVPCBEUVCGPZR",
-        email: data.email || "josie@yopmail.com",
-        pcn: data.national_id?.pcn || data.pcn || "9639954762664080",
-        mobile: data.mobile || "+639090000000",
-        birthdate: data.birth_date || "1990-01-01",
-        address: data.address || "1123 RIZAL ST., POBLACION, CITY OF ALAMINOS, PANGASINAN, PHILIPPINES",
+        uniqid: data.uniqid || result?.user?.sub || "",
+        email: data.email || result?.user?.email || "",
+        pcn: data.national_id?.pcn || data.pcn || "",
+        mobile: data.mobile || result?.user?.mobile || "",
+        birthdate: data.birth_date || "",
+        address: data.address || "",
       };
 
       setCitizenProfile(profile);
 
-      // Store authenticated profile in local storage for session binding
+      // Store the authenticated profile for session binding.
       if (typeof window !== "undefined") {
-        localStorage.setItem("egov_user_info", JSON.stringify({
-          ...profile,
-          exchange_code: code,
-          access_token: accessToken,
-        }));
-      }
-
-      // Step 3: Match/auto-login user into GabayMed session
-      try {
-        await api.mockLogin("applicant");
-      } catch (err) {
-        console.warn("Session auto-login sync:", err);
+        localStorage.setItem("egov_user_info", JSON.stringify(profile));
       }
 
       setStep("success");

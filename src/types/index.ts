@@ -23,6 +23,7 @@ export interface User {
   sub: string;
   name: string;
   email: string | null;
+  mobile?: string | null;
   role: Role;
   organization?: {
     id: number;

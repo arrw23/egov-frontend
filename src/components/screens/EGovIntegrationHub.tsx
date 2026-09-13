@@ -101,7 +101,6 @@ export function EGovIntegrationHub() {
   // SSO state
   const [exchangeCode, setExchangeCode] = useState("CYsS3rqHXM8QRBsO0444lXAUlcp1jeU4");
   const [partnerCode, setPartnerCode] = useState("3b597185a139440d8e6d56bc45330ee8");
-  const [partnerSecret, setPartnerSecret] = useState("1cdace2a179b4bf6917f6068c683b417");
   const [ssoToken, setSsoToken] = useState("");
 
   // eVerify state
@@ -115,7 +114,6 @@ export function EGovIntegrationHub() {
   const [livenessDelay, setLivenessDelay] = useState(3000);
 
   // AI state
-  const [aiAccessCode, setAiAccessCode] = useState("666d079fc10443d595c32af87eacbc8b");
   const [aiTokenValue, setAiTokenValue] = useState("");
   const [aiPrompt, setAiPrompt] = useState("how can i get my digital tin id here in egov");
   const [aiCategory, setAiCategory] = useState("PH");
@@ -135,7 +133,6 @@ export function EGovIntegrationHub() {
   const [smsMessage, setSmsMessage] = useState("GabayMed Notice: Your DSWD guarantee letter GL-DSWD-2026-04821 has been issued to Manila General Hospital.");
 
   // eReport state
-  const [ereportAccessCode, setEreportAccessCode] = useState("2a72bdcac1b0405fb2c679d029f03cfb");
   const [ereportTokenVal, setEreportTokenVal] = useState("");
   const [ereportViewTokenVal, setEreportViewTokenVal] = useState("");
   const [ereportEmail, setEreportEmail] = useState("josie@yopmail.com");
@@ -407,7 +404,9 @@ export function EGovIntegrationHub() {
                   </div>
                   <div>
                     <label style={{ fontSize: "0.8rem", fontWeight: 900, display: "block", marginBottom: "0.3rem" }}>Partner Secret</label>
-                    <input value={partnerSecret} onChange={(e) => setPartnerSecret(e.target.value)} type="password" style={{ width: "100%", padding: "0.6rem 0.85rem", border: "2px solid #1e1b4b", borderRadius: 12, fontWeight: 700 }} />
+                    <div style={{ padding: "0.6rem 0.85rem", border: "2px dashed #6366f1", borderRadius: 12, fontWeight: 700, fontSize: "0.8rem", color: "#4338ca", background: "#f5f3ff" }}>
+                      Configured server-side
+                    </div>
                   </div>
                 </div>
 
@@ -671,7 +670,7 @@ export function EGovIntegrationHub() {
                       try {
                         const res = await runApiCall(
                           () => api.createLivenessSession(livenessAction, livenessCallbackUrl, livenessDelay),
-                          `POST /v1/liveness/session\nHeaders: x-api-key: 487398a26750489380dc5fcf86613865\nBody: { "action": "${livenessAction}", "callback_url": "${livenessCallbackUrl}", "delay": ${livenessDelay} }`
+                          `POST /v1/liveness/session\nHeaders: x-api-key: <server-side>\nBody: { "action": "${livenessAction}", "callback_url": "${livenessCallbackUrl}", "delay": ${livenessDelay} }`
                         );
                         if (res?.token) {
                           setLivenessSessionId(res.token);
@@ -691,7 +690,7 @@ export function EGovIntegrationHub() {
                     onClick={() =>
                       runApiCall(
                         () => api.getLivenessResult(livenessSessionId || responseOutput?.token || "6b5e55ea-610d-4923-bf14-ecf02d4116bf"),
-                        `GET /v1/liveness/result/${livenessSessionId || responseOutput?.token || "sessionToken"}\nHeaders: x-api-key: 487398a26750489380dc5fcf86613865`
+                        `GET /v1/liveness/result/${livenessSessionId || responseOutput?.token || "sessionToken"}\nHeaders: x-api-key: <server-side>`
                       )
                     }
                     style={{ padding: "0.65rem 0.4rem", fontSize: "0.76rem" }}
@@ -749,13 +748,15 @@ export function EGovIntegrationHub() {
                 <div>
                   <label style={{ fontSize: "0.8rem", fontWeight: 900, display: "block", marginBottom: "0.3rem" }}>eGov AI Access Code</label>
                   <div style={{ display: "flex", gap: "0.5rem" }}>
-                    <input value={aiAccessCode} onChange={(e) => setAiAccessCode(e.target.value)} style={{ flex: 1, padding: "0.6rem 0.85rem", border: "2px solid #1e1b4b", borderRadius: 12, fontWeight: 700 }} />
+                    <div style={{ flex: 1, padding: "0.6rem 0.85rem", border: "2px dashed #6366f1", borderRadius: 12, fontWeight: 700, fontSize: "0.8rem", color: "#4338ca", background: "#f5f3ff" }}>
+                      Configured server-side
+                    </div>
                     <button
                       className="outline"
                       onClick={async () => {
                         const res = await runApiCall(
-                          () => api.aiToken(aiAccessCode),
-                          `POST /api/v1/egov/integration/token -> Exchange Access Code`
+                          () => api.aiToken(),
+                          `POST /api/v1/egov/integration/token -> server-side access code`
                         );
                         if (res?.access_token) setAiTokenValue(res.access_token);
                       }}
@@ -1004,7 +1005,7 @@ export function EGovIntegrationHub() {
                         onClick={() =>
                           runApiCall(
                             () => api.pushSms(smsNumber, smsMessage),
-                            `POST /messaging/v1/sms/push\nHeader 'X-EMESSAGE-Auth: f906c6acf1e547209f088c98dff92b4a'\nBody: { "number": "${smsNumber}", "message": "${smsMessage}" }`
+                            `POST /messaging/v1/sms/push\nHeader 'X-EMESSAGE-Auth: <server-side>'\nBody: { "number": "${smsNumber}", "message": "${smsMessage}" }`
                           )
                         }
                         style={{ padding: "0.8rem", fontSize: "0.82rem" }}
@@ -1036,12 +1037,9 @@ export function EGovIntegrationHub() {
                         <label style={{ fontSize: "0.75rem", fontWeight: 800, display: "block", marginBottom: "0.2rem" }}>
                           Access Code
                         </label>
-                        <input
-                          value={ereportAccessCode}
-                          onChange={(e) => setEreportAccessCode(e.target.value)}
-                          placeholder="2a72bdcac1b0405fb2c679d029f03cfb"
-                          style={{ width: "100%", padding: "0.5rem 0.6rem", border: "2px solid #1e1b4b", borderRadius: 10, fontSize: "0.78rem", fontFamily: "monospace" }}
-                        />
+                        <div style={{ width: "100%", padding: "0.5rem 0.6rem", border: "2px dashed #6366f1", borderRadius: 10, fontSize: "0.78rem", fontWeight: 700, color: "#4338ca", background: "#f5f3ff" }}>
+                          Configured server-side
+                        </div>
                       </div>
                       <div>
                         <label style={{ fontSize: "0.75rem", fontWeight: 800, display: "block", marginBottom: "0.2rem" }}>
@@ -1088,8 +1086,8 @@ export function EGovIntegrationHub() {
                         disabled={loading}
                         onClick={async () => {
                           const res = await runApiCall(
-                            () => api.ereportToken(ereportAccessCode),
-                            `POST /api/integration/token\nBody: { "access_code": "${ereportAccessCode}" }`
+                            () => api.ereportToken(),
+                            `POST /api/integration/token -> server-side access code`
                           );
                           if (res?.access_token) {
                             setEreportTokenVal(res.access_token);
