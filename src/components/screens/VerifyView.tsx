@@ -1,39 +1,31 @@
 import React, { useState, useRef, useEffect } from "react";
-import { ArrowRight, BadgeCheck, Camera, Check, QrCode, ShieldCheck, X, RefreshCw, UserCheck } from "lucide-react";
+import { AlertTriangle, ArrowRight, BadgeCheck, Camera, Check, QrCode, RefreshCw, ShieldCheck } from "lucide-react";
 import { Brand } from "../common/Brand";
 import { api } from "@/lib/api";
+import { captureImageSrc, LivenessCapture, runFaceLiveness } from "@/lib/liveness";
+import { decodeQrImage } from "@/lib/qr";
 
-type ScanStep = "initializing" | "positioning" | "blink" | "analyzing" | "verified";
+type Phase = "idle" | "decoding_qr" | "liveness" | "verifying" | "verified_pop";
 
-// Live face liveness won't pass for an arbitrary face during a demo, so the scan runs on a fixed
-// timeline and always ends in "Verified!". The real eGov calls still fire in the background.
-const SCAN_TIMELINE: { at: number; step: ScanStep; progress: number }[] = [
-  { at: 0, step: "initializing", progress: 8 },
-  { at: 1200, step: "positioning", progress: 30 },
-  { at: 2800, step: "blink", progress: 55 },
-  { at: 4300, step: "analyzing", progress: 82 },
-  { at: 5800, step: "verified", progress: 100 },
-];
-const VERIFIED_HOLD_MS = 2200;
-const QR_DECODE_MS = 1800;
+type EVerifyPerson = { full_name?: string; first_name?: string; reference?: string; token?: string; code?: string; message?: string };
+type EVerifyMeta = { tier_level?: string; result_grade?: number | string };
+type VerifiedResult = { person: EVerifyPerson; meta: EVerifyMeta; capture: LivenessCapture; method: "face" | "qr" };
 
-const SCAN_LABELS: Record<ScanStep, string> = {
-  initializing: "Connecting Camera...",
-  positioning: "Center Your Face · Detecting",
-  blink: "Blink Slowly · Liveness Challenge",
-  analyzing: "Analyzing Liveness & Anti-Spoofing...",
-  verified: "✓ Liveness Verified",
-};
-
+const VERIFIED_POP_MS = 1800;
 const DEMO_PCN = "9639954762664080";
-const DEMO_RESULT = {
-  grade: "Grade 1",
-  confidence: "98.71%",
-  reference: "EVR-30134906",
-  token: "26825997516254953092",
-};
 
 const formatPcn = (pcn: string) => (/^\d{16}$/.test(pcn) ? pcn : DEMO_PCN).replace(/(\d{4})(?=\d)/g, "$1-");
+
+const asRecord = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
+
+// Backend returns eVerify's JSON as { status, data: <eVerify body> }; the body is { data: person, meta } (live)
+// or the person object itself (backend mock mode)
+const readEVerifyResponse = (res: Record<string, unknown>) => {
+  const body = asRecord(res.data ?? res);
+  const person = asRecord(body.data ?? body) as EVerifyPerson;
+  const meta = asRecord(body.meta ?? res.meta) as EVerifyMeta;
+  return { person, meta };
+};
 
 export function VerifyView({
   verified,
@@ -45,19 +37,13 @@ export function VerifyView({
   onContinue: () => void;
 }) {
   const [consent, setConsent] = useState(false);
-  const [qrScanning, setQrScanning] = useState(false);
-  const [scanOpen, setScanOpen] = useState(false);
-  const [scanStep, setScanStep] = useState<ScanStep>("initializing");
-  const [scanProgress, setScanProgress] = useState(0);
-  const [cameraFailed, setCameraFailed] = useState(false);
-
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const scanActiveRef = useRef(false);
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [result, setResult] = useState<VerifiedResult | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
   const timersRef = useRef<number[]>([]);
 
-  // Load citizen name and info from eGov SSO session if available
-  // Defaults match the demo SSO citizen so the name agrees with the top bar when no SSO profile is stored
+  // Citizen demographics from the eGov SSO session (exact name parts when SSO provided them)
   const [citizenInfo, setCitizenInfo] = useState({
     firstName: "JOSIE",
     middleName: "SANTOS",
@@ -76,9 +62,9 @@ export function VerifyView({
         if (parsed.name) {
           const parts = parsed.name.trim().split(" ");
           setCitizenInfo({
-            firstName: parts[0] || "JOSIE",
-            middleName: parts.length > 2 ? parts[1] : "SANTOS",
-            lastName: parts.length > 1 ? parts[parts.length - 1] : "DELA CRUZ",
+            firstName: parsed.first_name || parts[0] || "JOSIE",
+            middleName: parsed.middle_name ?? (parts.length > 2 ? parts[1] : ""),
+            lastName: parsed.last_name || (parts.length > 1 ? parts[parts.length - 1] : "DELA CRUZ"),
             suffix: parsed.suffix || "",
             birthDate: parsed.birthdate || "1990-01-01",
             fullName: parsed.name,
@@ -89,129 +75,73 @@ export function VerifyView({
     } catch (e) {}
   }, []);
 
-  const schedule = (fn: () => void, ms: number) => {
-    timersRef.current.push(window.setTimeout(fn, ms));
+  useEffect(() => () => timersRef.current.forEach((t) => window.clearTimeout(t)), []);
+
+  const fail = (message: string) => {
+    setErrorMsg(message);
+    setPhase("idle");
   };
 
-  const clearTimers = () => {
-    timersRef.current.forEach((t) => window.clearTimeout(t));
-    timersRef.current = [];
-  };
+  // 1) Official eGov Face Liveness (camera) -> 2) PhilSys eVerify with the liveness session_id
+  const runVerification = async (qrValue?: string) => {
+    setErrorMsg("");
+    setPhase("liveness");
+    const liveness = await runFaceLiveness();
+    if (liveness.status === "cancelled") return fail("Face scan cancelled. Click Verify Identity to try again.");
+    if (liveness.status === "error") return fail(liveness.message);
 
-  const stopWebcam = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-  };
+    setPhase("verifying");
+    try {
+      const auth = asRecord(await api.eVerifyAuthLive());
+      const token = asRecord(auth.data).access_token ?? auth.access_token;
+      if (typeof token !== "string" || !token) throw new Error("eVerify didn't return an access token.");
 
-  useEffect(() => {
-    return () => {
-      scanActiveRef.current = false;
-      clearTimers();
-      stopWebcam();
-    };
-  }, []);
-
-  const startWebcam = () => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraFailed(true);
-      return;
-    }
-    navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } })
-      .then((stream) => {
-        // The scan may have been closed while the permission prompt was open
-        if (!scanActiveRef.current) {
-          stream.getTracks().forEach((track) => track.stop());
-          return;
-        }
-        streamRef.current = stream;
-        if (videoRef.current) videoRef.current.srcObject = stream;
-      })
-      .catch(() => setCameraFailed(true));
-  };
-
-  // Real eVerify / liveness calls so the backend logs the integration; the demo UI never waits on them
-  const runBackgroundChecks = (via: "face" | "qr") => {
-    (async () => {
-      try {
-        const session = await api.createLivenessSession("redirect", window.location.href, 3000);
-        const sessionId = session?.token || "";
-        const auth = await api.eVerifyAuth();
-        const token = auth?.data?.access_token;
-        if (via === "qr") {
-          await api.eVerifyQrVerify(`RAW_QR_CODE_VALUE_PHILSYS_${citizenInfo.pcn}`, sessionId, token);
-        } else {
-          await api.eVerifyQuery(
+      const res = qrValue
+        ? await api.eVerifyQrVerifyLive(qrValue, liveness.capture.sessionId, token)
+        : await api.eVerifyQueryLive(
             {
               first_name: citizenInfo.firstName,
-              middle_name: citizenInfo.middleName,
+              middle_name: citizenInfo.middleName || undefined,
               last_name: citizenInfo.lastName,
               suffix: citizenInfo.suffix || undefined,
               birth_date: citizenInfo.birthDate,
-              face_liveness_session_id: sessionId,
+              face_liveness_session_id: liveness.capture.sessionId,
             },
             token
           );
-        }
-      } catch (e) {
-        console.warn("Background eVerify calls failed (demo flow unaffected):", e);
+      const { person, meta } = readEVerifyResponse(res);
+      if (!(person.reference || person.token || person.full_name || person.first_name)) {
+        throw new Error(person.message || "eVerify returned no matching identity record.");
       }
-    })();
-  };
 
-  const openScan = () => {
-    clearTimers();
-    scanActiveRef.current = true;
-    setCameraFailed(false);
-    setScanStep("initializing");
-    setScanProgress(0);
-    setScanOpen(true);
-    startWebcam();
-
-    SCAN_TIMELINE.forEach(({ at, step, progress }) =>
-      schedule(() => {
-        setScanStep(step);
-        setScanProgress(progress);
-      }, at)
-    );
-
-    schedule(() => {
-      scanActiveRef.current = false;
-      stopWebcam();
-      setScanOpen(false);
+      setResult({ person, meta, capture: liveness.capture, method: qrValue ? "qr" : "face" });
       api.verifyIdentity(true).catch(() => {});
-      onVerify();
-    }, SCAN_TIMELINE[SCAN_TIMELINE.length - 1].at + VERIFIED_HOLD_MS);
+      setPhase("verified_pop");
+      timersRef.current.push(
+        window.setTimeout(() => {
+          setPhase("idle");
+          onVerify();
+        }, VERIFIED_POP_MS)
+      );
+    } catch (e) {
+      fail(`PhilSys eVerify didn't confirm this identity: ${e instanceof Error ? e.message : "request failed"}`);
+    }
   };
 
-  const cancelScan = () => {
-    scanActiveRef.current = false;
-    clearTimers();
-    stopWebcam();
-    setScanOpen(false);
-    setQrScanning(false);
+  // National ID QR: decode the uploaded QR photo, then the same live face check against /api/query/qr
+  const handleQrFile = async (file: File | undefined) => {
+    if (!file) return;
+    setErrorMsg("");
+    setPhase("decoding_qr");
+    const value = file.type.startsWith("image/") ? await decodeQrImage(file) : null;
+    if (!value) return fail("Couldn't read a QR code from that image. Upload a clear photo of the National ID's QR code.");
+    await runVerification(value);
   };
 
-  const startFaceVerification = () => {
-    runBackgroundChecks("face");
-    openScan();
-  };
-
-  // eVerify's QR endpoint still needs a face liveness session, so QR decode leads into the same face scan
-  const startQrVerification = () => {
-    clearTimers();
-    setQrScanning(true);
-    runBackgroundChecks("qr");
-    schedule(() => {
-      setQrScanning(false);
-      openScan();
-    }, QR_DECODE_MS);
-  };
-
+  const busy = phase !== "idle";
   const pcn = formatPcn(citizenInfo.pcn);
-  const busy = qrScanning || scanOpen;
+  const selfie = captureImageSrc(result?.capture);
+  const verifiedName = result?.person.full_name || citizenInfo.fullName;
 
   return (
     <div style={{ maxWidth: 580, width: "100%", margin: "1.5rem auto", padding: "1.5rem", background: "white", borderRadius: 28, border: "2.5px solid #1e1b4b", boxShadow: "0 8px 0 #1e1b4b", boxSizing: "border-box" }}>
@@ -234,7 +164,7 @@ export function VerifyView({
             <span><Check size={16} color="#059669" /> Full Name: <b>{citizenInfo.fullName}</b></span>
             <span><Check size={16} color="#059669" /> Date of Birth: <b>{citizenInfo.birthDate}</b></span>
             <span><Check size={16} color="#059669" /> PhilSys Card Number (PCN): <b>{pcn}</b></span>
-            <span><Camera size={16} color="#2563eb" /> Biometrics: <b>Face Liveness Web SDK Active</b></span>
+            <span><Camera size={16} color="#2563eb" /> Biometrics: <b>Official eGov Face Liveness Web SDK</b></span>
           </div>
 
           <label style={{ display: "flex", gap: "0.75rem", alignItems: "center", marginBottom: "1.5rem", fontSize: "0.88rem", fontWeight: 700, cursor: "pointer" }}>
@@ -242,25 +172,48 @@ export function VerifyView({
             I consent to PhilSys identity authentication and biometric face liveness verification.
           </label>
 
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => {
+              handleQrFile(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
             <button
               disabled={!consent || busy}
               className="primary wide"
-              onClick={startFaceVerification}
+              onClick={() => runVerification()}
               style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.6rem", padding: "0.85rem" }}
             >
-              <ShieldCheck size={20} /> Verify Identity
+              {phase === "liveness" ? (
+                <>
+                  <RefreshCw size={20} className="animate-spin" /> eGov Face Liveness in progress...
+                </>
+              ) : phase === "verifying" ? (
+                <>
+                  <RefreshCw size={20} className="animate-spin" /> Checking with PhilSys eVerify...
+                </>
+              ) : (
+                <>
+                  <ShieldCheck size={20} /> Verify Identity
+                </>
+              )}
             </button>
 
             <button
               disabled={!consent || busy}
               className="outline wide"
-              onClick={startQrVerification}
+              onClick={() => fileRef.current?.click()}
               style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.6rem", padding: "0.8rem" }}
             >
-              {qrScanning ? (
+              {phase === "decoding_qr" ? (
                 <>
-                  <RefreshCw size={20} className="animate-spin" /> Decrypting National ID QR...
+                  <RefreshCw size={20} className="animate-spin" /> Reading National ID QR...
                 </>
               ) : (
                 <>
@@ -268,50 +221,72 @@ export function VerifyView({
                 </>
               )}
             </button>
+            <small style={{ color: "#6366f1", fontWeight: 700, textAlign: "center" }}>
+              Opens the official eGov Face Liveness camera check. The QR option asks for a photo of the National ID QR first.
+            </small>
           </div>
+
+          {errorMsg && (
+            <div role="alert" style={{ marginTop: "1rem", background: "#fef2f2", border: "2px solid #ef4444", borderRadius: 14, padding: "0.75rem 1rem", color: "#991b1b", fontSize: "0.82rem", fontWeight: 800, display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
+              <AlertTriangle size={18} color="#dc2626" style={{ flexShrink: 0, marginTop: 1 }} /> <span>{errorMsg}</span>
+            </div>
+          )}
         </section>
       ) : (
         <section style={{ textAlign: "center", padding: "0.5rem 0" }}>
-          <div style={{ width: 72, height: 72, background: "#dcfce7", border: "2.5px solid #1e1b4b", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1rem auto", boxShadow: "0 4px 0 #1e1b4b" }}>
-            <Check size={40} color="#166534" />
-          </div>
+          {selfie ? (
+            // eslint-disable-next-line @next/next/no-img-element -- selfie returned by the eGov liveness session
+            <img src={selfie} alt="Selfie captured by eGov Face Liveness" style={{ width: 96, height: 96, objectFit: "cover", borderRadius: "50%", border: "3px solid #1e1b4b", boxShadow: "0 4px 0 #1e1b4b", margin: "0 auto 1rem auto", display: "block" }} />
+          ) : (
+            <div style={{ width: 72, height: 72, background: "#dcfce7", border: "2.5px solid #1e1b4b", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1rem auto", boxShadow: "0 4px 0 #1e1b4b" }}>
+              <Check size={40} color="#166534" />
+            </div>
+          )}
           <div style={{ background: "#dcfce7", color: "#14532d", padding: "0.35rem 1rem", borderRadius: "9999px", border: "1.5px solid #1e1b4b", fontWeight: 900, fontSize: "0.8rem", display: "inline-block", marginBottom: "0.5rem" }}>
-            IDENTITY VERIFIED (TIER II) 👋
+            IDENTITY VERIFIED{result?.meta.tier_level ? ` (${String(result.meta.tier_level).toUpperCase()})` : ""} 👋
           </div>
-          <h1 style={{ fontSize: "1.75rem", fontWeight: 900, margin: "0.25rem 0", color: "#1e1b4b" }}>Welcome, {citizenInfo.fullName}</h1>
+          <h1 style={{ fontSize: "1.75rem", fontWeight: 900, margin: "0.25rem 0", color: "#1e1b4b" }}>Welcome, {verifiedName}</h1>
           <p style={{ color: "#4338ca", fontSize: "0.92rem", fontWeight: 600, marginBottom: "1.25rem" }}>
             Your identity has been authenticated against PhilSys NIDAS eVerify records.
           </p>
 
           <div style={{ background: "#f5f3ff", padding: "1.25rem", borderRadius: 20, border: "2px solid #1e1b4b", textAlign: "left", marginBottom: "1rem", fontSize: "0.88rem", fontWeight: 700, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap" }} title="PhilSys Card Number matched in the NIDAS registry">
+            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap" }} title="PhilSys Card Number from the eGovPH SSO profile">
               <span>PhilSys Card Number (PCN):</span> <b>{pcn}</b>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap" }} title="Demographic match grade returned by eVerify /api/query">
-              <span>Match Result:</span> <b style={{ color: "#059669" }}>{DEMO_RESULT.grade}</b>
-            </div>
+            {result?.meta.result_grade !== undefined && (
+              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap" }} title="Match grade returned by PhilSys eVerify">
+                <span>Match Result:</span> <b style={{ color: "#059669" }}>Grade {String(result.meta.result_grade)}</b>
+              </div>
+            )}
             <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap" }}>
-              <span>Verified Citizen:</span> <span style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}><b>{citizenInfo.fullName}</b> <BadgeCheck size={18} color="#2563eb" /></span>
+              <span>Verified Citizen:</span> <span style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}><b>{verifiedName}</b> <BadgeCheck size={18} color="#2563eb" /></span>
             </div>
+            {result?.person.reference && (
+              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap" }}>
+                <span>Verification Reference:</span> <b>{result.person.reference}</b>
+              </div>
+            )}
+            {result?.person.token && (
+              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+                <span>NIDAS Token:</span> <code style={{ wordBreak: "break-all" }}>{result.person.token}</code>
+              </div>
+            )}
             <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap" }}>
-              <span>Verification Reference:</span> <b>{DEMO_RESULT.reference}</b>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap" }}>
-              <span>NIDAS Token:</span> <code>{DEMO_RESULT.token}</code>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap" }}>
-              <span>Authentication Tier:</span> <b style={{ color: "#059669" }}>Tier II (Demographics + Biometrics)</b>
+              <span>Verified Via:</span> <b style={{ color: "#059669" }}>{result?.method === "qr" ? "National ID QR + Face Liveness" : "Demographics + Face Liveness"}</b>
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", justifyContent: "center", marginBottom: "1.5rem" }}>
-            <span title="Face Liveness Web SDK · POST /v1/liveness/session (score ≥ 95.0 required)" style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", background: "#e0e7ff", color: "#1e1b4b", padding: "0.4rem 0.85rem", borderRadius: "9999px", border: "1.5px solid #1e1b4b", fontSize: "0.8rem", fontWeight: 900 }}>
-              <Camera size={16} /> Face Liveness SDK · Confidence {DEMO_RESULT.confidence}
-            </span>
-            <span title="Presentation-attack detection: no photo, screen replay or mask detected" style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", background: "#dcfce7", color: "#14532d", padding: "0.4rem 0.85rem", borderRadius: "9999px", border: "1.5px solid #166534", fontSize: "0.8rem", fontWeight: 900 }}>
-              <ShieldCheck size={16} /> Anti-Spoofing: Passed
-            </span>
-          </div>
+          {result && (
+            <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", justifyContent: "center", marginBottom: "1.5rem" }}>
+              <span title={`eGov Face Liveness session ${result.capture.sessionId}`} style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", background: "#e0e7ff", color: "#1e1b4b", padding: "0.4rem 0.85rem", borderRadius: "9999px", border: "1.5px solid #1e1b4b", fontSize: "0.8rem", fontWeight: 900 }}>
+                <Camera size={16} /> Face Liveness SDK · Session {result.capture.sessionId.slice(0, 8)}
+              </span>
+              <span title="Live capture passed the eGov liveness challenge (no photo, screen replay or mask)" style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", background: "#dcfce7", color: "#14532d", padding: "0.4rem 0.85rem", borderRadius: "9999px", border: "1.5px solid #166534", fontSize: "0.8rem", fontWeight: 900 }}>
+                <ShieldCheck size={16} /> Anti-Spoofing: Passed
+              </span>
+            </div>
+          )}
 
           <button className="primary wide" onClick={onContinue}>
             Confirm & Proceed to Case <ArrowRight size={20} />
@@ -319,63 +294,27 @@ export function VerifyView({
         </section>
       )}
 
-      {/* Timed face liveness scan with "Verified!" pop */}
-      {scanOpen && (
+      {/* Checking eVerify / "Verified!" pop (the eGov liveness SDK draws its own full-screen camera overlay) */}
+      {(phase === "verifying" || phase === "verified_pop") && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.8)", backdropFilter: "blur(6px)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}>
-          <div style={{ background: "#ffffff", border: "3px solid #1e1b4b", borderRadius: 28, padding: "1.5rem", maxWidth: 440, width: "100%", textAlign: "center", boxShadow: "0 12px 0 #1e1b4b", position: "relative", boxSizing: "border-box", overflow: "hidden" }}>
-            {scanStep !== "verified" && (
-              <button style={{ position: "absolute", top: 16, right: 16, background: "#f1f5f9", border: "2px solid #1e1b4b", borderRadius: "50%", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }} onClick={cancelScan} aria-label="Close scanner modal">
-                <X size={20} />
-              </button>
-            )}
-            <div style={{ background: "#e0e7ff", color: "#1e1b4b", padding: "0.3rem 0.85rem", borderRadius: "9999px", border: "1.5px solid #1e1b4b", fontWeight: 900, fontSize: "0.75rem", display: "inline-block", marginBottom: "0.75rem" }}>
-              BIOMETRIC FACE LIVENESS SCAN
-            </div>
-            <h3 style={{ fontSize: "1.3rem", fontWeight: 900, margin: "0 0 0.25rem 0", color: "#1e1b4b" }}>Center Your Face in Frame</h3>
-            <p style={{ color: "#4338ca", fontSize: "0.85rem", fontWeight: 600, marginBottom: "1.25rem" }}>Hold steady while facial movement and liveness are verified.</p>
-
-            <div style={{ position: "relative", width: 240, height: 240, margin: "0 auto 0.85rem auto", borderRadius: "50%", border: "4px solid #4338ca", overflow: "hidden", boxShadow: "0 0 0 8px rgba(99, 102, 241, 0.25)", background: "#0f172a" }}>
-              <video
-                ref={(el) => {
-                  videoRef.current = el;
-                  if (el && streamRef.current && el.srcObject !== streamRef.current) el.srcObject = streamRef.current;
-                }}
-                autoPlay
-                playsInline
-                muted
-                style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)" }}
-              />
-              {cameraFailed && (
-                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.4rem", color: "#c7d2fe", fontSize: "0.72rem", fontWeight: 800 }}>
-                  <UserCheck size={72} color="#6366f1" />
-                  Camera unavailable
-                </div>
-              )}
-              <div style={{ position: "absolute", top: `${scanProgress}%`, left: 0, right: 0, height: 3, background: "#38bdf8", boxShadow: "0 0 12px #38bdf8", transition: "top 0.3s ease" }} />
-            </div>
-
-            <div style={{ display: "inline-block", background: scanStep === "verified" ? "#dcfce7" : "#1e1b4b", color: scanStep === "verified" ? "#14532d" : "#ffffff", padding: "0.3rem 0.85rem", borderRadius: 12, fontSize: "0.78rem", fontWeight: 900, marginBottom: "0.85rem" }}>
-              {SCAN_LABELS[scanStep]}
-            </div>
-
-            <div style={{ background: "#e0e7ff", height: 10, borderRadius: 5, overflow: "hidden", border: "1px solid #1e1b4b", marginBottom: "1rem" }}>
-              <div style={{ width: `${scanProgress}%`, background: "#059669", height: "100%", transition: "width 0.4s ease" }} />
-            </div>
-            <div style={{ fontSize: "0.82rem", fontWeight: 800, color: "#1e1b4b", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
-              <ShieldCheck size={18} color="#059669" /> Verification Status: <b>{scanStep === "verified" ? "Complete" : "In Progress..."}</b>
-            </div>
-
-            {scanStep === "verified" && (
-              <div role="status" style={{ position: "absolute", inset: 0, background: "rgba(255, 255, 255, 0.96)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "1.5rem" }}>
-                <div className="verifiedPop" style={{ width: 112, height: 112, borderRadius: "50%", background: "#dcfce7", border: "3px solid #1e1b4b", boxShadow: "0 6px 0 #1e1b4b", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "1rem" }}>
+          <div role="status" style={{ background: "#ffffff", border: "3px solid #1e1b4b", borderRadius: 28, padding: "2rem 1.5rem", maxWidth: 420, width: "100%", textAlign: "center", boxShadow: "0 12px 0 #1e1b4b", boxSizing: "border-box" }}>
+            {phase === "verifying" ? (
+              <>
+                <RefreshCw size={44} color="#4338ca" className="animate-spin" style={{ margin: "0 auto 1rem auto", display: "block" }} />
+                <h2 style={{ fontSize: "1.4rem", fontWeight: 900, color: "#1e1b4b", margin: 0 }}>Checking with PhilSys eVerify...</h2>
+                <p style={{ color: "#4338ca", fontSize: "0.85rem", fontWeight: 700, margin: "0.5rem 0 0 0" }}>Face liveness captured · matching against the PhilSys registry</p>
+              </>
+            ) : (
+              <>
+                <div className="verifiedPop" style={{ width: 112, height: 112, borderRadius: "50%", background: "#dcfce7", border: "3px solid #1e1b4b", boxShadow: "0 6px 0 #1e1b4b", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1rem auto" }}>
                   <Check size={64} color="#166534" strokeWidth={3} />
                 </div>
                 <h2 className="verifiedPop" style={{ fontSize: "2.2rem", fontWeight: 900, color: "#1e1b4b", margin: 0 }}>Verified!</h2>
                 <p style={{ color: "#059669", fontSize: "0.9rem", fontWeight: 800, margin: "0.4rem 0 0.2rem 0" }}>
-                  Liveness confidence {DEMO_RESULT.confidence} · Anti-spoofing passed
+                  Face liveness passed · PhilSys eVerify match{result?.meta.result_grade !== undefined ? ` (Grade ${String(result.meta.result_grade)})` : ""}
                 </p>
-                <small style={{ color: "#4338ca", fontWeight: 700 }}>PhilSys NIDAS eVerify · Tier II</small>
-              </div>
+                <small style={{ color: "#4338ca", fontWeight: 700 }}>PhilSys NIDAS eVerify{result?.meta.tier_level ? ` · ${String(result.meta.tier_level)}` : ""}</small>
+              </>
             )}
           </div>
         </div>

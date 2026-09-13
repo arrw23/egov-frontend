@@ -19,7 +19,8 @@ async function request<T>(endpoint: string, options: RequestInit = {}, useRoot: 
     });
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.message || `API error (${res.status})`);
+      // Backend proxies wrap upstream errors as { status, data: { message } }
+      throw new Error(errorData.message || errorData.data?.message || errorData.error?.message || `API error (${res.status})`);
     }
     return await res.json();
   } catch (err: any) {
@@ -100,6 +101,29 @@ export const api = {
   },
 
   // --- 2. eVerify ---
+  // Live variants with NO mock fallback: the login identity check must show eVerify's real outcome,
+  // and the fallbacks below would report a match even when eVerify rejects the face or demographics.
+  // The backend supplies the eVerify client credentials itself.
+  async eVerifyAuthLive(): Promise<Record<string, unknown>> {
+    return request<Record<string, unknown>>('/api/auth', { method: 'POST', body: '{}' }, true);
+  },
+
+  async eVerifyQueryLive(data: Record<string, unknown>, token: string): Promise<Record<string, unknown>> {
+    return request<Record<string, unknown>>('/api/query', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(data),
+    }, true);
+  },
+
+  async eVerifyQrVerifyLive(value: string, faceLivenessSessionId: string, token: string): Promise<Record<string, unknown>> {
+    return request<Record<string, unknown>>('/api/query/qr', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ value, face_liveness_session_id: faceLivenessSessionId }),
+    }, true);
+  },
+
   async eVerifyAuth(clientId: string = 'a24bef86-8826-48f7-aac5-978ca5805c29', clientSecret: string = '1EQT3mEC8GqEYCcUufaylPewnWi052VcJdnAOmIPHFy5zbUv0JcqVEwf7DSeb1OB'): Promise<any> {
     return request<any>('/api/auth', {
       method: 'POST',

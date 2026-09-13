@@ -1,7 +1,7 @@
 import React from "react";
 import { AlertTriangle, CheckCircle2, FileText, Network, QrCode, RefreshCw, ScanLine, Search, ShieldCheck } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import jsQR from "jsqr";
+import { decodeQrImage } from "@/lib/qr";
 import { Screen } from "@/types";
 import { Head, Status } from "../common/Ui";
 import { api } from "@/lib/api";
@@ -172,38 +172,6 @@ type LookupState =
   | { status: "error"; message: string };
 
 type Settlement = { amount: number; billingRef: string; transactionRef: string; gateway: string; settlementUuid?: string };
-
-// Decode a QR from an uploaded screenshot/photo. Pads with white (the GL QR has no quiet zone)
-// and upscales small screenshots so jsQR can find the finder patterns.
-const decodeQrImage = (file: File): Promise<string | null> =>
-  new Promise((resolve) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      const longest = Math.max(img.width, img.height);
-      const scale = longest < 600 ? 600 / longest : Math.min(1, 1400 / longest);
-      const w = Math.round(img.width * scale);
-      const h = Math.round(img.height * scale);
-      const pad = Math.round(Math.max(w, h) * 0.12);
-      const canvas = document.createElement("canvas");
-      canvas.width = w + pad * 2;
-      canvas.height = h + pad * 2;
-      const ctx = canvas.getContext("2d");
-      URL.revokeObjectURL(url);
-      if (!ctx) return resolve(null);
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.imageSmoothingEnabled = scale < 1;
-      ctx.drawImage(img, pad, pad, w, h);
-      const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      resolve(jsQR(data, canvas.width, canvas.height, { inversionAttempts: "attemptBoth" })?.data ?? null);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve(null);
-    };
-    img.src = url;
-  });
 
 const parsePeso = (s: string) => Number(s.replace(/[₱,\s]/g, ""));
 

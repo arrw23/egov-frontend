@@ -55,6 +55,7 @@ export default function Home() {
   };
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const roleSyncRef = useRef<Promise<unknown>>(Promise.resolve());
+  const toastTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     api.getCases()
@@ -88,9 +89,11 @@ export default function Home() {
     if (typeof window !== "undefined") window.scrollTo(0, 0);
   };
 
+  // Restart the hide timer on every toast so an older toast's timer can't clear a newer message early
   const notify = (s: string) => {
     setToast(s);
-    setTimeout(() => setToast(""), 3200);
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToast(""), 3200);
   };
 
   const backendRole = (r: Role) => (r === "applicant" ? "applicant" : r === "hospital_staff" ? "hospital" : "agency");
