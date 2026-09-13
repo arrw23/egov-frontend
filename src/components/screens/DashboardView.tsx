@@ -48,9 +48,12 @@ export function DashboardView({
         title="Your Medical Assistance"
         text="Track your family's request from hospital document verification to guarantee letter utilization."
         action={
-          <button className="primary" onClick={() => go("apply")}>
-            <FileText size={20} /> New application
-          </button>
+          <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
+            <Status tone="green">9 Integrated Services Active</Status>
+            <button className="primary" onClick={() => go("apply")}>
+              <FileText size={20} /> New application
+            </button>
+          </div>
         }
       />
       <div className="case">

@@ -39,6 +39,59 @@ type ActiveTab =
   | "report"
   | "compass";
 
+type SummaryRow = { label: string; value: string; highlight?: boolean };
+
+const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+// 7514252280701.64 -> "₱7.51 Trillion"
+const pesoCompact = (n: number) => {
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return `₱${(n / 1e12).toFixed(2)} Trillion`;
+  if (abs >= 1e9) return `₱${(n / 1e9).toFixed(2)} Billion`;
+  if (abs >= 1e6) return `₱${(n / 1e6).toFixed(2)} Million`;
+  return `₱${n.toLocaleString("en-PH")}`;
+};
+
+// Readable card for DBM Compass responses so the presenter can point at figures instead of raw JSON
+const compassSummary = (res: unknown): { title: string; rows: SummaryRow[] } | null => {
+  if (!res || typeof res !== "object") return null;
+  const r = res as Record<string, unknown>;
+  const cascade = r.cascade as Record<string, unknown> | undefined;
+  if (cascade && isNum(cascade.totalAvailable)) {
+    const rates = (r.rates as Record<string, unknown> | undefined) ?? {};
+    const { totalAvailable, allotments, obligations, disbursements } = cascade;
+    const rate = isNum(rates.obligationRate)
+      ? rates.obligationRate
+      : isNum(obligations) && isNum(allotments) && allotments > 0
+      ? obligations / allotments
+      : null;
+    return {
+      title: `SAAODB BUDGET CASCADE${r.reportYear ? ` · FY ${r.reportYear}` : ""}`,
+      rows: [
+        { label: "Total Available", value: pesoCompact(totalAvailable), highlight: true },
+        ...(isNum(allotments) ? [{ label: "Allotments", value: pesoCompact(allotments) }] : []),
+        ...(isNum(obligations) ? [{ label: "Obligations", value: pesoCompact(obligations), highlight: true }] : []),
+        ...(isNum(disbursements) ? [{ label: "Disbursements", value: pesoCompact(disbursements) }] : []),
+        ...(rate !== null ? [{ label: "Utilization Rate (obligations ÷ allotments)", value: `${(rate * 100).toFixed(1)}%`, highlight: true }] : []),
+      ],
+    };
+  }
+  if (isNum(r.total_allocation)) {
+    return {
+      title: `GAA 2026 TRANSPARENCY METRICS${r.program_code ? ` · ${r.program_code}` : ""}`,
+      rows: [
+        { label: "Total Allocation", value: pesoCompact(r.total_allocation), highlight: true },
+        ...(isNum(r.utilized_amount) ? [{ label: "Utilized", value: pesoCompact(r.utilized_amount), highlight: true }] : []),
+        ...(isNum(r.remaining_balance) ? [{ label: "Remaining Balance", value: pesoCompact(r.remaining_balance) }] : []),
+        ...(isNum(r.disbursements) ? [{ label: "Disbursements", value: pesoCompact(r.disbursements) }] : []),
+        ...(typeof r.fund_source === "string" ? [{ label: "Fund Source", value: r.fund_source }] : []),
+        ...(typeof r.status === "string" ? [{ label: "Status", value: r.status }] : []),
+      ],
+    };
+  }
+  return null;
+};
+
 export function EGovIntegrationHub() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("blockchain");
   const [loading, setLoading] = useState(false);
@@ -141,9 +194,9 @@ export function EGovIntegrationHub() {
           { id: "ai", label: "AI Intelligence", Icon: Brain, tone: "#7c3aed" },
           { id: "pay", label: "Payment Settlement", Icon: Wallet, tone: "#0284c7" },
           { id: "message", label: "Citizen Notifications", Icon: MessageSquare, tone: "#e11d48" },
-          { id: "report", label: "Audit Logging", Icon: Layers, tone: "#475569" },
-          { id: "compass", label: "Budget Transparency", Icon: Database, tone: "#0d9488" },
-        ].map((tab) => {
+          { id: "report", label: "eReport Audit Logging", Icon: Layers, tone: "#475569" },
+          { id: "compass", label: "DBM Compass Budget Transparency", Icon: Database, tone: "#0d9488" },
+        ].map((tab, i) => {
           const Icon = tab.Icon;
           const isActive = activeTab === tab.id;
           return (
@@ -167,6 +220,10 @@ export function EGovIntegrationHub() {
                 borderColor: "#1e1b4b",
               }}
             >
+              {/* Tab numbers match the demo script's "Tab 8" / "Tab 9" references */}
+              <span aria-hidden="true" style={{ minWidth: 18, height: 18, borderRadius: "50%", background: isActive ? "rgba(255,255,255,0.25)" : "#e0e7ff", fontSize: "0.7rem", fontWeight: 900, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                {i + 1}
+              </span>
               <Icon size={16} /> {tab.label}
             </button>
           );
@@ -1473,6 +1530,25 @@ export function EGovIntegrationHub() {
               {curlCommand || "# Select a service on the left panel to test execution"}
             </code>
           </div>
+
+          {!loading && activeTab === "compass" && (() => {
+            const summary = compassSummary(responseOutput);
+            return summary ? (
+              <div style={{ background: "#ecfdf5", border: "2.5px solid #1e1b4b", borderRadius: 20, padding: "1.1rem 1.25rem", boxShadow: "0 6px 0 #1e1b4b", color: "#1e1b4b" }}>
+                <div style={{ fontSize: "0.75rem", fontWeight: 900, color: "#0f766e", letterSpacing: "0.08em", marginBottom: "0.6rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                  <Database size={15} /> {summary.title}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "0.6rem" }}>
+                  {summary.rows.map((row) => (
+                    <div key={row.label} style={{ background: "#ffffff", border: "2px solid #1e1b4b", borderRadius: 14, padding: "0.6rem 0.75rem" }}>
+                      <span style={{ display: "block", fontSize: "0.72rem", fontWeight: 800, color: "#4338ca" }}>{row.label}</span>
+                      <b style={{ fontSize: row.highlight ? "1.15rem" : "0.9rem", fontWeight: 900, color: row.highlight ? "#0f766e" : "#1e1b4b" }}>{row.value}</b>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null;
+          })()}
 
           <div style={{ background: "#0f172a", color: "#38bdf8", border: "2.5px solid #1e1b4b", borderRadius: 20, padding: "1.25rem", minHeight: 300, boxShadow: "0 6px 0 #1e1b4b" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.6rem", borderBottom: "1.5px solid rgba(255,255,255,0.1)", paddingBottom: "0.5rem" }}>

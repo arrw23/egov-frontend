@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { Role, Screen } from "@/types";
+import { toDisplayName, toInitials } from "@/lib/names";
 import { Brand } from "../common/Brand";
 
 export const navItems: Record<Role, [Screen, string, any][]> = {
@@ -50,18 +51,45 @@ export const navItems: Record<Role, [Screen, string, any][]> = {
   ],
 };
 
+// Role switcher the demo script uses between segments (option labels match the script wording)
+export function RoleSwitcher({
+  role,
+  applicantName,
+  onSwitchRole,
+}: {
+  role: Role;
+  applicantName: string;
+  onSwitchRole: (r: Role) => void;
+}) {
+  return (
+    <div className="roleSwitch">
+      <span>Switch demo role</span>
+      <select value={role} onChange={(e) => onSwitchRole(e.target.value as Role)} aria-label="Switch demo role">
+        <option value="applicant">Applicant ({toDisplayName(applicantName)})</option>
+        <option value="hospital_staff">Hospital Staff (Dr. Ana Reyes)</option>
+        <option value="agency_evaluator">Agency Evaluator (Miguel Dela Cruz - DSWD)</option>
+      </select>
+    </div>
+  );
+}
+
 export function Nav({
   role,
   screen,
   go,
+  applicantName,
+  onSwitchRole,
 }: {
   role: Role;
   screen: Screen;
   go: (s: Screen, r?: Role) => void;
+  applicantName: string;
+  onSwitchRole: (r: Role) => void;
 }) {
   return (
     <aside className="nav">
       <Brand />
+      <RoleSwitcher role={role} applicantName={applicantName} onSwitchRole={onSwitchRole} />
       <label>{role.replace("_", " ")} Portal</label>
       {navItems[role].map(([s, t, Icon]) => (
         <button className={s === screen ? "active" : ""} onClick={() => go(s)} key={s}>
@@ -106,11 +134,15 @@ export function MobileDrawer({
   screen,
   go,
   onClose,
+  applicantName,
+  onSwitchRole,
 }: {
   role: Role;
   screen: Screen;
   go: (s: Screen, r?: Role) => void;
   onClose: () => void;
+  applicantName: string;
+  onSwitchRole: (r: Role) => void;
 }) {
   return (
     <div className="mobileDrawerOverlay" onClick={onClose}>
@@ -121,6 +153,8 @@ export function MobileDrawer({
             <X size={20} />
           </button>
         </div>
+
+        <RoleSwitcher role={role} applicantName={applicantName} onSwitchRole={onSwitchRole} />
 
         <div style={{ fontSize: "0.75rem", fontWeight: 900, color: "#6366f1", letterSpacing: "0.1em", textTransform: "uppercase" }}>
           {role.replace("_", " ")} Navigation
@@ -164,16 +198,20 @@ export function MobileDrawer({
 
 export function Top({
   role,
+  verified = false,
+  applicantName = "JOSIE SANTOS DELA CRUZ",
   onOpenDrawer,
   onLogout,
 }: {
   role: Role;
+  verified?: boolean;
+  applicantName?: string;
   onOpenDrawer: () => void;
   onLogout: () => void;
 }) {
   const profile =
     role === "applicant"
-      ? ["MS", "Maria Santos", "Applicant Representative"]
+      ? [toInitials(applicantName), toDisplayName(applicantName), "Applicant Representative"]
       : role === "hospital_staff"
       ? ["AR", "Dr. Ana Reyes", "Medical Records Officer"]
       : ["MC", "Miguel dela Cruz", "DSWD Evaluator"];
@@ -187,9 +225,16 @@ export function Top({
         <span className="ssoBadge">
           <BadgeCheck color="#1e1b4b" size={18} /> eGovPH SSO Authenticated
         </span>
-        <span className="ssoBadge" style={{ background: "#ecfdf5", color: "#166534", borderColor: "#a7f3d0" }} title="Profile verified via eGovPH SSO">
-          🔒 Profile Verified via eGovPH SSO
-        </span>
+        {/* Once PhilSys eVerify passes it supersedes the SSO profile badge (two badges fit the 72px bar) */}
+        {role === "applicant" && verified ? (
+          <span className="ssoBadge" style={{ background: "#dcfce7", color: "#14532d", borderColor: "#166534" }} title="PhilSys eVerify Tier II · Face liveness 98.71% · PCN 9639-9547-6266-4080">
+            <ShieldCheck color="#166534" size={18} /> PhilSys Verified
+          </span>
+        ) : (
+          <span className="ssoBadge" style={{ background: "#ecfdf5", color: "#166534", borderColor: "#a7f3d0" }} title="Profile verified via eGovPH SSO">
+            🔒 Profile Verified via eGovPH SSO
+          </span>
+        )}
       </div>
 
       <div className="userBadge">

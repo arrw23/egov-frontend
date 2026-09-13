@@ -9,6 +9,8 @@ import {
   FileText,
   Filter,
   Layers,
+  MessageSquare,
+  QrCode,
   Search,
   ShieldCheck,
   Sparkles,
@@ -17,6 +19,10 @@ import {
 import { Screen } from "@/types";
 import { Head, Stat, Status } from "../common/Ui";
 import { api } from "@/lib/api";
+import { toDisplayName } from "@/lib/names";
+
+// req_1 is the demo citizen's case; its applicant is whoever signed in via eGovPH SSO
+const DEMO_CASE_REQUEST_ID = "req_1";
 
 interface PendingServiceRequest {
   id: string;
@@ -33,9 +39,9 @@ interface PendingServiceRequest {
 
 const MOCK_PENDING_REQUESTS: PendingServiceRequest[] = [
   {
-    id: "req_1",
+    id: DEMO_CASE_REQUEST_ID,
     caseNumber: "MGL-2026-001284",
-    applicantName: "Maria Lourdes Santos",
+    applicantName: "Josie Santos Dela Cruz",
     patientName: "Juan D. Santos",
     relationship: "Sister",
     hospitalName: "Manila General Hospital",
@@ -126,9 +132,11 @@ const MOCK_PENDING_REQUESTS: PendingServiceRequest[] = [
 export function AgencyInboxView({
   go,
   notify,
+  applicantName,
 }: {
   go: (s: Screen) => void;
   notify?: (s: string) => void;
+  applicantName: string;
 }) {
   const [budget, setBudget] = useState<any>(null);
 
@@ -147,7 +155,9 @@ export function AgencyInboxView({
   };
 
   // Filter and Sort requests
-  const processedRequests = MOCK_PENDING_REQUESTS.filter((req) => {
+  const processedRequests = MOCK_PENDING_REQUESTS.map((req) =>
+    req.id === DEMO_CASE_REQUEST_ID ? { ...req, applicantName: toDisplayName(applicantName) } : req
+  ).filter((req) => {
     const score = calculateCompleteness(req);
     if (filterCategory === "ready" && score < 100) return false;
     if (filterCategory === "partial" && (score === 100 || score < 50)) return false;
@@ -578,11 +588,32 @@ export function AgencyInboxView({
 export function AgencyReviewView({
   go,
   approve,
+  applicantName,
+  applicantMobile,
 }: {
   go: (s: Screen) => void;
-  approve: (amount: number) => void;
+  approve: (amount: number) => Promise<void> | void;
+  applicantName: string;
+  applicantMobile: string;
 }) {
   const [amount, setAmount] = useState("50000");
+  const [issueState, setIssueState] = useState<"idle" | "issuing" | "issued">("idle");
+  const [smsState, setSmsState] = useState<"idle" | "dispatching" | "sent">("idle");
+  const applicant = toDisplayName(applicantName);
+  const smsText = `GabayMed: Your Guarantee Letter GL-DSWD-2026-04821 for ₱${Number(amount || 0).toLocaleString("en-PH")} at Manila General Hospital has been issued by DSWD NCR. Present the QR at hospital billing.`;
+
+  const handleApprove = async () => {
+    setIssueState("issuing");
+    await approve(Number(amount));
+    setIssueState("issued");
+    setSmsState("dispatching");
+    // Keep "Dispatching..." on screen briefly so the eMessage step is visible in the demo
+    await Promise.all([
+      api.pushSms(applicantMobile, smsText).catch(() => null),
+      new Promise((r) => setTimeout(r, 1200)),
+    ]);
+    setSmsState("sent");
+  };
 
   return (
     <>
@@ -603,7 +634,7 @@ export function AgencyReviewView({
       <Head
         over="UNIFIED CASE REVIEW · MGL-2026-001284"
         title="Juan D. Santos"
-        text="Submitted by Maria Lourdes Santos · Manila General Hospital"
+        text={`Submitted by ${applicant} · Manila General Hospital`}
         action={<Status tone="orange">Under Review</Status>}
       />
 
@@ -616,7 +647,7 @@ export function AgencyReviewView({
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "0.5rem" }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 900 }}>
-                  Maria Lourdes Santos <BadgeCheck color="#2563eb" size={20} />
+                  {applicant} <BadgeCheck color="#2563eb" size={20} />
                 </h3>
                 <p style={{ margin: 0, color: "#4338ca", fontSize: "0.9rem", fontWeight: 600 }}>
                   Sister & Authorized Patient Representative
@@ -628,11 +659,25 @@ export function AgencyReviewView({
 
           <section className="card ai">
             <h3>
-              <Sparkles size={20} /> AI-Generated Case Summary
+              <Sparkles size={20} /> eGov AI Medical Eligibility Summary
             </h3>
             <p>
               Patient <b>Juan D. Santos</b> requires a <b>laparoscopic appendectomy</b> at Manila General Hospital. The hospital-certified bill is <b>₱150,000.00</b>. No previous government assistance has been received. All documentary requirements are <b>100% complete and verified</b>. Applicant requests <b>₱50,000.00</b>.
             </p>
+            <div style={{ background: "#ffffff", border: "2px solid #1e1b4b", borderRadius: 16, padding: "0.85rem 1rem", margin: "0.85rem 0", fontSize: "0.85rem", fontWeight: 700, display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+              <b style={{ fontSize: "0.75rem", letterSpacing: "0.08em", color: "#6366f1" }}>ANTI-DOUBLE DIPPING CHECK</b>
+              {[
+                ["PhilHealth", "Coverage compared · no case-rate claim for this confinement"],
+                ["PCSO", "0 active medical assistance claims"],
+                ["DOH MAIFIP", "0 active claims"],
+                ["DSWD AICS", "No other guarantee letter issued this year"],
+              ].map(([agency, result]) => (
+                <div key={agency} style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap", color: "#1e1b4b" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}><CheckCircle2 size={14} color="#059669" style={{ flexShrink: 0 }} /> {agency}</span>
+                  <span style={{ color: "#166534" }}>{result}</span>
+                </div>
+              ))}
+            </div>
             <small>AI-generated summary — subject to evaluator review.</small>
           </section>
 
@@ -791,13 +836,35 @@ export function AgencyReviewView({
 
             <button
               className="primary wide"
-              onClick={() => {
-                approve(Number(amount));
-                go("guarantee");
-              }}
+              disabled={issueState !== "idle"}
+              onClick={handleApprove}
+              style={{ background: "#059669" }}
             >
-              <ShieldCheck size={20} /> Approve & Issue Guarantee Letter
+              <ShieldCheck size={20} />{" "}
+              {issueState === "idle" ? "Approve & Issue Digital Guarantee Letter" : issueState === "issuing" ? "Issuing Guarantee Letter..." : "Guarantee Letter Issued"}
             </button>
+
+            {/* eMessage push SMS to the applicant, shown live as it dispatches */}
+            {smsState !== "idle" && (
+              <div role="status" style={{ marginTop: "1rem", background: "#1e1b4b", color: "#ffffff", borderRadius: 18, padding: "1rem 1.1rem", border: "2.5px solid #312e81" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
+                  <span style={{ fontSize: "0.72rem", fontWeight: 900, color: "#818cf8", letterSpacing: "0.08em", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                    <MessageSquare size={14} /> eMESSAGE PUSH SMS
+                  </span>
+                  <span style={{ fontSize: "0.72rem", fontWeight: 900, background: smsState === "sent" ? "#059669" : "#4338ca", padding: "0.15rem 0.55rem", borderRadius: 8 }}>
+                    {smsState === "sent" ? "SENT ✓" : "DISPATCHING..."}
+                  </span>
+                </div>
+                <div style={{ fontSize: "0.85rem", fontWeight: 800 }}>To: {applicantMobile} ({applicant})</div>
+                <p style={{ margin: "0.4rem 0 0 0", fontSize: "0.8rem", color: "#c7d2fe", fontWeight: 600, lineHeight: 1.45 }}>&ldquo;{smsText}&rdquo;</p>
+              </div>
+            )}
+
+            {issueState === "issued" && (
+              <button className="outline wide" style={{ marginTop: "1rem", background: "#ffffff" }} onClick={() => go("guarantee")}>
+                <QrCode size={20} /> Preview Guarantee Letter
+              </button>
+            )}
           </section>
         </aside>
       </div>

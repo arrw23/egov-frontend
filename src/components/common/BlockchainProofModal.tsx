@@ -214,7 +214,7 @@ export function BlockchainProofModal({
                 </div>
                 <div>
                   <span style={{ color: "#64748b", display: "block", fontSize: "0.75rem", fontWeight: 700 }}>Gas Cost</span>
-                  <b style={{ color: "#16a34a" }}>0.0000 ETH (Zero-Fee)</b>
+                  <b style={{ color: "#16a34a" }}>{proofData?.blockchain?.gas_used || "0x0 (Zero Fee)"}</b>
                 </div>
               </div>
 

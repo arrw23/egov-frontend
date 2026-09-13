@@ -91,6 +91,35 @@ html, body {
   box-shadow: 0 4px 0 var(--stroke);
 }
 
+.roleSwitch {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 1.25rem;
+}
+
+.roleSwitch span {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #6366f1;
+  padding-left: 0.75rem;
+  text-transform: uppercase;
+}
+
+.roleSwitch select {
+  width: 100%;
+  padding: 0.6rem 0.85rem;
+  border: 2px solid var(--stroke);
+  border-radius: 14px;
+  background: #fef08a;
+  color: #1e1b4b;
+  font-size: 0.85rem;
+  font-weight: 800;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+
 .navFoot {
   margin-top: auto;
   padding-top: 1.25rem;
@@ -648,9 +677,12 @@ input, select, textarea {
 
 /* Grid Layouts */
 .cols { display: grid; grid-template-columns: 2fr 1fr; gap: 1.75rem; }
+/* Validate Guarantee: the verified record + billing column needs the extra width */
+.cols.validateCols { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); align-items: start; }
 
 @media (max-width: 860px) {
-  .cols {
+  .cols,
+  .cols.validateCols {
     grid-template-columns: 1fr;
   }
 }
@@ -1014,6 +1046,19 @@ input, select, textarea {
     padding: 1rem;
     min-height: auto;
   }
+}
+
+/* Face liveness "Verified!" pop (VerifyView) */
+@keyframes verifiedPop {
+  0% { transform: scale(0.4); opacity: 0; }
+  60% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.verifiedPop {
+  animation: verifiedPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .verifiedPop { animation: none; }
 }
 
 

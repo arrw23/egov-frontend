@@ -99,9 +99,10 @@ function SSOContent() {
       }
 
       setStep("success");
+      // Long enough for the presenter to point at the hydrated profile (demo script segment 1)
       setTimeout(() => {
         router.push(`/?sso=authenticated&name=${encodeURIComponent(profile.name)}`);
-      }, 1600);
+      }, 3500);
 
     } catch (err: any) {
       console.error("SSO Code exchange error:", err);
@@ -206,11 +207,12 @@ function SSOContent() {
               <div style={{ display: "flex", justifyContent: "space-between" }}><span>PhilSys PCN:</span> <b>{citizenProfile.pcn}</b></div>
               <div style={{ display: "flex", justifyContent: "space-between" }}><span>Registered Email:</span> <b>{citizenProfile.email}</b></div>
               <div style={{ display: "flex", justifyContent: "space-between" }}><span>Mobile:</span> <b>{citizenProfile.mobile}</b></div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem" }}><span style={{ flexShrink: 0 }}>Address:</span> <b style={{ textAlign: "right" }}>{citizenProfile.address}</b></div>
               <div style={{ display: "flex", justifyContent: "space-between" }}><span>Profile Mode:</span> <b style={{ color: "#059669" }}>Read-Only (Managed via eGovPH)</b></div>
             </div>
 
             <div style={{ fontSize: "0.8rem", color: "#059669", fontWeight: 800, background: "#ecfdf5", padding: "0.6rem 1rem", borderRadius: "9999px", border: "1.5px solid #a7f3d0", display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "center" }}>
-              <ShieldCheck size={16} /> Redirecting to GabayMed Portal...
+              <ShieldCheck size={16} /> Redirecting to PhilSys Identity Check...
             </div>
           </div>
         )}

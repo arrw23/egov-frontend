@@ -2,15 +2,20 @@ import React, { useState } from "react";
 import { Activity, CheckCircle2, Clock3, ShieldCheck, Sparkles, Upload, FileText, Eye, Plus, Cpu } from "lucide-react";
 import { api } from "@/lib/api";
 import { CaseDocument, Screen } from "@/types";
+import { toDisplayName } from "@/lib/names";
 import { Head, Stat, Status } from "../common/Ui";
 import { BlockchainProofModal } from "../common/BlockchainProofModal";
+
+type ProviderRecord = { id: number; type: string; title: string; status: string; ref: string; hash: string; fullSha256: string; besuTx: string; block: string };
 
 export function HospitalQueueView({
   go,
   notify,
+  applicantName,
 }: {
   go: (s: Screen) => void;
   notify: (s: string) => void;
+  applicantName: string;
 }) {
   return (
     <>
@@ -53,7 +58,7 @@ export function HospitalQueueView({
         </div>
 
         {[
-          ["Juan D. Santos", "MGL-2026-001284", "Medical Abstract, SOA (₱150,000)", "Pending"],
+          ["Juan D. Santos", "MGL-2026-001284", `Applicant: ${toDisplayName(applicantName)} · Medical Abstract, SOA (₱150,000)`, "Pending"],
           ["Liza P. Mendoza", "MGL-2026-001279", "Medical Abstract, SOA", "Processing"],
           ["Roberto A. Garcia", "MGL-2026-001265", "SOA, Physician Order", "Completed"],
         ].map(([name, num, docs, st], i) => (
@@ -205,7 +210,24 @@ export function HospitalDetailView({
       }))
     );
     notify("All patient medical records certified & anchored to eGovChain blockchain; citizen & DSWD notified!");
+    // Pop the Statement of Account's eGovChain proof (tx hash, block, zero gas) right after anchoring
+    const soa = records.find((r) => r.type === "statement_of_account");
+    if (soa) setSelectedProofDoc(proofDocFor(soa, true));
   };
+
+  const proofDocFor = (rec: ProviderRecord, isCertified: boolean): Partial<CaseDocument> => ({
+    id: rec.id,
+    title: rec.title,
+    document_type: rec.type,
+    status: (isCertified ? "certified" : rec.status) as CaseDocument["status"],
+    sha256_hash: rec.hash,
+    verification_reference: rec.ref,
+    extracted_json: {
+      full_sha256: rec.fullSha256,
+      blockchain_tx_hash: rec.besuTx,
+      blockchain_block_number: rec.block,
+    },
+  });
 
   return (
     <>
@@ -221,7 +243,7 @@ export function HospitalDetailView({
               disabled={certified}
               onClick={handleBatchCertifyAll}
             >
-              <ShieldCheck size={18} /> {certified ? "All Records Certified" : "Batch Certify All Records"}
+              <ShieldCheck size={18} /> {certified ? "All Records Certified & Anchored" : "Certify & Anchor to Blockchain"}
             </button>
           </div>
 
@@ -295,21 +317,7 @@ export function HospitalDetailView({
                     </code>
                   </div>
                   <button
-                    onClick={() =>
-                      setSelectedProofDoc({
-                        id: rec.id,
-                        title: rec.title,
-                        document_type: rec.type,
-                        status: rec.status === "certified" || certified ? "certified" : rec.status,
-                        sha256_hash: rec.hash,
-                        verification_reference: rec.ref,
-                        extracted_json: {
-                          full_sha256: rec.fullSha256,
-                          blockchain_tx_hash: rec.besuTx,
-                          blockchain_block_number: rec.block,
-                        },
-                      })
-                    }
+                    onClick={() => setSelectedProofDoc(proofDocFor(rec, rec.status === "certified" || certified))}
                     style={{
                       padding: "0.35rem 0.75rem",
                       background: "#15803d",

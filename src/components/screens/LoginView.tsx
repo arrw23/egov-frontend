@@ -72,7 +72,7 @@ export function LoginView({ onLogin }: { onLogin: (r: Role) => void }) {
             className="primary wide"
             style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.6rem", textDecoration: "none", marginBottom: "1.5rem", padding: "0.9rem 1.25rem", borderRadius: "9999px", width: "100%" }}
           >
-            <ShieldCheck size={22} /> Authenticate via eGovPH SSO <ArrowRight size={20} />
+            <ShieldCheck size={22} /> Sign in with eGovPH SSO <ArrowRight size={20} />
           </button>
 
           <div style={{ textAlign: "center", fontSize: "0.8rem", color: "#6366f1", fontWeight: 800, marginBottom: "1rem" }}>
