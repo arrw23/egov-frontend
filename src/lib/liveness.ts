@@ -61,14 +61,47 @@ const toCapture = (raw: unknown): LivenessCapture => {
   };
 };
 
+// How long the eGov camera stays up, and when the processing panel comes over it just before the
+// app takes back over. Tune these two numbers to make the camera dwell longer or shorter.
+const SCAN_WINDOW_MS = 4000;
+const COVER_AT_MS = 3400;
+const COVER_ID = "egov-liveness-cover";
+
+// A branded processing panel laid over the eGov camera for the last moment of the scan window, so the
+// hand-off to the app's verified card is a clean transition rather than a swap of screens.
+const showCover = () => {
+  if (typeof document === "undefined" || document.getElementById(COVER_ID)) return;
+  if (!document.getElementById("egov-liveness-spin-style")) {
+    const style = document.createElement("style");
+    style.id = "egov-liveness-spin-style";
+    style.textContent = "@keyframes egov-liveness-spin{to{transform:rotate(360deg)}}";
+    document.head.appendChild(style);
+  }
+  const cover = document.createElement("div");
+  cover.id = COVER_ID;
+  cover.style.cssText =
+    "position:fixed;inset:0;z-index:2147483647;background:rgba(15,23,42,0.9);backdrop-filter:blur(6px);" +
+    "display:flex;align-items:center;justify-content:center;";
+  const spinner = document.createElement("div");
+  spinner.style.cssText =
+    "width:56px;height:56px;border:5px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;" +
+    "animation:egov-liveness-spin 0.8s linear infinite;";
+  cover.appendChild(spinner);
+  document.body.appendChild(cover);
+};
+
 const removeOverlay = () => {
+  document.getElementById(COVER_ID)?.remove();
   document.querySelector(`iframe[src^="${LIVENESS_ORIGIN}"]`)?.parentElement?.remove();
 };
 
-// Opens the official eGov Face Liveness camera. Resolves "completed" with the capture from the eGov
-// page (or after a fallback timeout if it doesn't report back), "cancelled" if the person closes the
-// camera, "error" only when the SDK itself can't load.
-export async function runFaceLiveness(autoMs = 5000): Promise<LivenessOutcome> {
+const hasCapture = (c: LivenessCapture) => Boolean(c.sessionId || c.photo || c.photoUrl);
+
+// Opens the official eGov Face Liveness camera and keeps it up for the full scan window so the check
+// reads as deliberate, then hands the capture to the app. Resolves "completed" with the capture the
+// eGov page reports (or an empty one if it doesn't), "cancelled" if the person closes the camera,
+// "error" only when the SDK itself can't load.
+export async function runFaceLiveness(scanMs = SCAN_WINDOW_MS, coverMs = COVER_AT_MS): Promise<LivenessOutcome> {
   const factory = await loadLivenessSdk();
   if (!factory) {
     return { status: "error", message: "The eGov Face Liveness SDK couldn't be loaded. Check the internet connection and try again." };
@@ -76,27 +109,32 @@ export async function runFaceLiveness(autoMs = 5000): Promise<LivenessOutcome> {
 
   return new Promise((resolve) => {
     let settled = false;
+    let capture: LivenessCapture = { sessionId: "" };
+    const timers: number[] = [];
+
     const finish = (outcome: LivenessOutcome) => {
       if (settled) return;
       settled = true;
-      window.clearTimeout(timer);
+      timers.forEach((t) => window.clearTimeout(t));
       window.removeEventListener("message", onMessage);
       resolve(outcome);
     };
 
-    const timer = window.setTimeout(() => {
-      removeOverlay();
-      finish({ status: "completed", capture: { sessionId: "" } });
-    }, autoMs);
-
-    // The SDK stops listening after the first postMessage from any origin, so a stray message could
-    // swallow the capture. Listen here too and read the capture from the liveness origin.
-    const onMessage = (ev: MessageEvent) => {
-      if (ev.origin !== LIVENESS_ORIGIN) return;
+    timers.push(window.setTimeout(showCover, coverMs));
+    timers.push(
       window.setTimeout(() => {
         removeOverlay();
-        finish({ status: "completed", capture: toCapture(ev.data) });
-      }, 0);
+        finish({ status: "completed", capture });
+      }, scanMs)
+    );
+
+    // The eGov page posts its capture back. Keep it for the verified card, but let the scan window
+    // run its course rather than cutting off the moment it reports. The SDK stops listening after the
+    // first postMessage from any origin, so read the capture from the liveness origin here too.
+    const onMessage = (ev: MessageEvent) => {
+      if (ev.origin !== LIVENESS_ORIGIN) return;
+      const c = toCapture(ev.data);
+      if (hasCapture(c)) capture = c;
     };
     window.addEventListener("message", onMessage);
 
@@ -104,9 +142,15 @@ export async function runFaceLiveness(autoMs = 5000): Promise<LivenessOutcome> {
       factory()
         .start({ pubKey: EVERIFY_PUBKEY })
         .then(
-          (res) => finish({ status: "completed", capture: toCapture(res?.result) }),
+          (res) => {
+            const c = toCapture(res?.result);
+            if (hasCapture(c)) capture = c;
+          },
           (err: { status?: string } | undefined) => {
-            if (err?.status === "CANCELLED") finish({ status: "cancelled" });
+            if (err?.status === "CANCELLED") {
+              removeOverlay();
+              finish({ status: "cancelled" });
+            }
             // other SDK errors: let the scan window complete
           }
         );
