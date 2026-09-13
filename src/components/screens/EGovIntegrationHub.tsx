@@ -25,7 +25,7 @@ import {
   UserCheck,
   Wallet,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, isSandboxResponse, sandboxResponseInfo } from "@/lib/api";
 import { Head, Status } from "../common/Ui";
 
 type ActiveTab =
@@ -40,6 +40,43 @@ type ActiveTab =
   | "compass";
 
 type SummaryRow = { label: string; value: string; highlight?: boolean };
+
+/** Public liveness config (SDK URL, iframe origin, public key) from the backend. */
+let livenessConfigCache: { pubkey: string | null; sdk_src: string | null; origin: string | null } | null = null;
+async function publicLivenessConfig() {
+  if (!livenessConfigCache) {
+    try {
+      const cfg = await api.getPublicConfig();
+      livenessConfigCache = cfg?.liveness ?? { pubkey: null, sdk_src: null, origin: null };
+    } catch {
+      livenessConfigCache = { pubkey: null, sdk_src: null, origin: null };
+    }
+  }
+  return livenessConfigCache;
+}
+
+/**
+ * The ledger is only real when a contract address is configured server-side.
+ * Everything here is driven by the backend's own `simulated` / `anchored`
+ * fields — never asserted in the UI.
+ */
+function ledgerStatusOf(payload: any): { simulated: boolean | null; anchored: boolean | null; label: string; chainName: string } {
+  if (!payload || typeof payload !== "object") {
+    return { simulated: null, anchored: null, label: "LGR", chainName: "—" };
+  }
+  const simulated = payload.simulated ?? payload.result?.simulated ?? null;
+  const anchored = payload.anchored ?? null;
+  const chainName = payload.result?.chain_name || payload.chain_name || (simulated === true ? "Simulated ledger (no chain submission)" : "—");
+  const label =
+    simulated === true
+      ? "SIMULATED LEDGER · NOT SUBMITTED TO ANY CHAIN"
+      : simulated === false && anchored === true
+      ? "SUBMITTED TO THE CONFIGURED LEDGER"
+      : simulated === false
+      ? "LEDGER CONFIGURED · ANCHOR NOT CONFIRMED"
+      : "LEDGER STATUS UNKNOWN";
+  return { simulated, anchored, label, chainName };
+}
 
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
@@ -177,7 +214,7 @@ export function EGovIntegrationHub() {
       <Head
         over="REPUBLIC OF THE PHILIPPINES · SYSTEM SERVICES"
         title="System Integration & Service Testing Hub"
-        text="Test and verify integrated government services including tamper-evident record verification, identity cross-checking, biometrics, and automated case summaries."
+        text="Test and verify integrated government services including record verification, identity cross-checking, biometrics, and automated case summaries."
         action={<Status tone="green">9 Integrated Services Active</Status>}
       />
 
@@ -235,11 +272,11 @@ export function EGovIntegrationHub() {
           {activeTab === "blockchain" && (
             <div>
               <div style={{ background: "#e0e7ff", color: "#1e1b4b", padding: "0.3rem 0.8rem", borderRadius: "9999px", border: "1.5px solid #1e1b4b", fontWeight: 900, fontSize: "0.75rem", display: "inline-block", marginBottom: "0.75rem" }}>
-                TAMPER-EVIDENT RECORD LEDGER
+                RECORD REFERENCE LEDGER
               </div>
               <h3 style={{ fontSize: "1.35rem", fontWeight: 900, marginBottom: "0.4rem", color: "#1e1b4b" }}>Record Verification Service</h3>
               <p style={{ color: "#4338ca", fontSize: "0.88rem", fontWeight: 600, marginBottom: "1.25rem" }}>
-                Verify and anchor guarantee letter states to the official tamper-evident government digital record ledger.
+                Verify and anchor record references. The ledger is <b>simulated</b> unless a contract address is configured on the backend — the response below reports which case applies.
               </p>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
@@ -482,18 +519,20 @@ export function EGovIntegrationHub() {
                       type="button"
                       className="outline"
                       onClick={async () => {
-                        if (typeof window !== "undefined" && (window as any).eKYC) {
-                          try {
-                            const res = await (window as any).eKYC().start({
-                              pubKey: "eyJpdiI6InAzOGc3d1BZcVVZck1IY3plS0xscVE9PSIsInZhbHVlIjoiSlRESmdFYkZ4ZnV3M1ZkUjFiTHpDUT09IiwibWFjIjoiZTEzZjI5ZGRkZTVhNWNkNGU3ZmQ0NDY4MTAyZDY2Yjc1NjJiYmMxNTMwN2E2NzVlZmM5ZjhjZmEyZWM1ZmMwMCIsInRhZyI6IiJ9"
-                            });
-                            if (res?.result?.session_id) {
-                              setLivenessSessionId(res.result.session_id);
-                              setResponseOutput(res);
-                            }
-                          } catch (e: any) {
-                            console.error(e);
+                        if (typeof window === "undefined" || !(window as any).eKYC) return;
+                        try {
+                          const cfg = await publicLivenessConfig();
+                          if (!cfg.pubkey) {
+                            setResponseOutput({ error: "The eVerify liveness public key is not configured. Check GET /api/v1/egov/public-config." });
+                            return;
                           }
+                          const res = await (window as any).eKYC().start({ pubKey: cfg.pubkey });
+                          if (res?.result?.session_id) {
+                            setLivenessSessionId(res.result.session_id);
+                            setResponseOutput(res);
+                          }
+                        } catch (e: any) {
+                          console.error(e);
                         }
                       }}
                       style={{ padding: "0.6rem 0.9rem", fontSize: "0.78rem", whiteSpace: "nowrap" }}
@@ -585,23 +624,26 @@ export function EGovIntegrationHub() {
                   className="primary wide"
                   disabled={loading}
                   onClick={async () => {
-                    if (typeof window !== "undefined" && (window as any).eKYC) {
-                      try {
-                        const res = await (window as any).eKYC().start({
-                          pubKey: "eyJpdiI6InAzOGc3d1BZcVVZck1IY3plS0xscVE9PSIsInZhbHVlIjoiSlRESmdFYkZ4ZnV3M1ZkUjFiTHpDUT09IiwibWFjIjoiZTEzZjI5ZGRkZTVhNWNkNGU3ZmQ0NDY4MTAyZDY2Yjc1NjJiYmMxNTMwN2E2NzVlZmM5ZjhjZmEyZWM1ZmMwMCIsInRhZyI6IiJ9"
-                        });
-                        setResponseOutput(res);
-                        if (res?.result?.session_id) {
-                          setLivenessSessionId(res.result.session_id);
-                        }
-                      } catch (e: any) {
-                        setResponseOutput({ error: e?.message || "Liveness SDK cancelled or failed" });
-                      }
-                    } else {
+                    if (typeof window === "undefined" || !(window as any).eKYC) {
                       runApiCall(
                         () => api.createLivenessSession("redirect", "https://your-app.com/callback", 3000),
-                        `window.eKYC().start({ pubKey: "..." }) -> Official Face Liveness Web SDK`
+                        `POST /v1/liveness/session -> server-side liveness session`
                       );
+                      return;
+                    }
+                    try {
+                      const cfg = await publicLivenessConfig();
+                      if (!cfg.pubkey) {
+                        setResponseOutput({ error: "The eVerify liveness public key is not configured. Check GET /api/v1/egov/public-config." });
+                        return;
+                      }
+                      const res = await (window as any).eKYC().start({ pubKey: cfg.pubkey });
+                      setResponseOutput(res);
+                      if (res?.result?.session_id) {
+                        setLivenessSessionId(res.result.session_id);
+                      }
+                    } catch (e: any) {
+                      setResponseOutput({ error: e?.message || "Liveness SDK cancelled or failed" });
                     }
                   }}
                   style={{ padding: "0.85rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}
@@ -1549,14 +1591,55 @@ export function EGovIntegrationHub() {
           })()}
 
           <div style={{ background: "#0f172a", color: "#38bdf8", border: "2.5px solid #1e1b4b", borderRadius: 20, padding: "1.25rem", minHeight: 300, boxShadow: "0 6px 0 #1e1b4b" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.6rem", borderBottom: "1.5px solid rgba(255,255,255,0.1)", paddingBottom: "0.5rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.6rem", borderBottom: "1.5px solid rgba(255,255,255,0.1)", paddingBottom: "0.5rem", gap: "0.5rem", flexWrap: "wrap" }}>
               <span style={{ fontSize: "0.75rem", fontWeight: 900, color: "#4ade80", display: "flex", gap: "0.4rem", alignItems: "center" }}>
                 <Code2 size={16} /> SERVICE JSON RESPONSE
               </span>
-              <span style={{ fontSize: "0.72rem", background: "rgba(255,255,255,0.1)", padding: "0.15rem 0.5rem", borderRadius: 6, color: "#cbd5e1", fontWeight: 800 }}>
-                Status 200 OK
+              <span style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap" }}>
+                {isSandboxResponse(responseOutput) && (
+                  <span
+                    title={sandboxResponseInfo(responseOutput)?.note}
+                    style={{ fontSize: "0.72rem", background: "#b45309", padding: "0.15rem 0.5rem", borderRadius: 6, color: "#ffffff", fontWeight: 900 }}
+                  >
+                    SANDBOX RESPONSE · BACKEND UNREACHABLE
+                  </span>
+                )}
+                {responseOutput?.error && (
+                  <span style={{ fontSize: "0.72rem", background: "#b91c1c", padding: "0.15rem 0.5rem", borderRadius: 6, color: "#ffffff", fontWeight: 900 }}>
+                    REQUEST FAILED
+                  </span>
+                )}
+                <span style={{ fontSize: "0.72rem", background: "rgba(255,255,255,0.1)", padding: "0.15rem 0.5rem", borderRadius: 6, color: "#cbd5e1", fontWeight: 800 }}>
+                  {responseOutput?.error ? "Error" : "Live response"}
+                </span>
               </span>
             </div>
+
+            {/* Honest ledger status, driven by the backend's simulated/anchored flags */}
+            {(activeTab === "blockchain" || responseOutput?.simulated !== undefined || responseOutput?.result?.simulated !== undefined) && responseOutput && !responseOutput.error && (
+              (() => {
+                const s = ledgerStatusOf(responseOutput);
+                if (s.simulated === null) return null;
+                return (
+                  <div
+                    role="status"
+                    style={{
+                      marginBottom: "0.75rem",
+                      background: s.simulated ? "#78350f" : "#064e3b",
+                      border: `1.5px solid ${s.simulated ? "#f59e0b" : "#34d399"}`,
+                      color: s.simulated ? "#fde68a" : "#a7f3d0",
+                      borderRadius: 12,
+                      padding: "0.55rem 0.8rem",
+                      fontSize: "0.75rem",
+                      fontWeight: 800,
+                    }}
+                  >
+                    {s.label} · chain_name: {s.chainName}
+                    {s.anchored === false && s.simulated === false ? " · the node did not confirm a transaction" : ""}
+                  </div>
+                );
+              })()
+            )}
 
             {loading ? (
               <div style={{ padding: "2rem", textAlign: "center", color: "#94a3b8", fontWeight: 700 }}>

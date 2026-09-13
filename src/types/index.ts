@@ -60,6 +60,7 @@ export interface MedicalCase {
   case_number: string;
   patient_name: string;
   applicant_name?: string;
+  applicant?: { id?: number; name: string; mobile?: string | null; email?: string | null };
   relationship: string;
   provider_id: number;
   provider?: Organization;
@@ -67,6 +68,7 @@ export interface MedicalCase {
   verified_bill: number;
   treatment_date?: string;
   status: string;
+  created_at?: string;
   financials?: Financials;
   documents?: CaseDocument[];
   hospital_requests?: HospitalRequest[];
@@ -105,6 +107,8 @@ export interface HospitalRequest {
   hospital?: Organization;
   requested_document_types: string[];
   status: 'pending' | 'processing' | 'certified';
+  notes?: string | null;
+  created_at?: string;
   medical_case?: MedicalCase;
 }
 
@@ -177,16 +181,45 @@ export interface NotificationItem {
 export interface AuditEvent {
   id: number;
   medical_case_id?: number;
+  actor_id?: number | null;
   actor_name: string;
   action: string;
   description: string;
   chain_hash: string;
+  payload_sha256?: string | null;
+  metadata?: Record<string, any> | null;
   created_at: string;
 }
 
+/**
+ * Which case / agency application / hospital request / guarantee letter the
+ * signed-in user is currently working on. Lives in `app/page.tsx` and is
+ * threaded into every screen so no screen has to guess an id.
+ */
+export interface Selection {
+  caseId?: number;
+  applicationId?: number;
+  hospitalRequestId?: number;
+  guaranteeId?: number;
+}
+
+/** Shape returned by EGovAIService::generateCaseSummary(). */
 export interface AISummary {
   summary: string;
+  facts?: {
+    patient?: string;
+    case_number?: string;
+    condition?: string;
+    provider?: string;
+    verified_bill?: number;
+    relationship?: string;
+    status?: string;
+    documents_present?: string[];
+    missing?: string[];
+  };
+  requirements?: { type: string; title: string; document_id?: number | null; status: string }[];
   missing_requirements: string[];
   completeness_score: number;
+  source?: string;
   disclaimer: string;
 }

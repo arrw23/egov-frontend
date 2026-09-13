@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from "react";
-import { UploadCloud, FileText, ShieldCheck, CheckCircle2, Cpu, Eye, Sparkles, Layers, Check, ArrowRight } from "lucide-react";
+import React, { useCallback, useEffect, useState } from "react";
+import { UploadCloud, FileText, Eye, Layers, ArrowRight, RefreshCw, AlertTriangle, Building2 } from "lucide-react";
 import { api } from "@/lib/api";
-import { CaseDocument, MedicalCase, Screen } from "@/types";
+import { CaseDocument, MedicalCase, Screen, Selection } from "@/types";
 import { Head, Status } from "../common/Ui";
 import { BlockchainProofModal } from "../common/BlockchainProofModal";
 import { getSavedRequirementRule, SavedServiceRule } from "@/lib/requirementStore";
@@ -9,82 +9,76 @@ import { getSavedRequirementRule, SavedServiceRule } from "@/lib/requirementStor
 export function DocumentUploadView({
   go,
   notify,
+  selection,
 }: {
   go: (s: Screen) => void;
   notify: (s: string) => void;
+  selection: Selection;
 }) {
+  const caseId = selection.caseId;
   const [activeCase, setActiveCase] = useState<MedicalCase | null>(null);
   const [rule, setRule] = useState<SavedServiceRule>(getSavedRequirementRule());
   const [uploadedMap, setUploadedMap] = useState<Record<string, CaseDocument>>({});
   const [uploadingBlockId, setUploadingBlockId] = useState<string | null>(null);
-
-  // Verification modal state
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [selectedDocForProof, setSelectedDocForProof] = useState<Partial<CaseDocument> | null>(null);
 
+  const load = useCallback(async () => {
+    if (!caseId) {
+      setActiveCase(null);
+      setUploadedMap({});
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const res = await api.getCase(caseId);
+      setActiveCase(res.case);
+      const map: Record<string, CaseDocument> = {};
+      (res.case.documents || []).forEach((d) => {
+        map[d.document_type] = d;
+      });
+      setUploadedMap(map);
+    } catch (err: any) {
+      setActiveCase(null);
+      setUploadedMap({});
+      setError(err?.message || "The case documents could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  }, [caseId]);
+
   useEffect(() => {
-    // Sync requirement rule from requirement builder
     const syncRule = () => setRule(getSavedRequirementRule());
     syncRule();
     window.addEventListener("egov_rule_updated", syncRule);
-
-    api.getCases()
-      .then((res) => {
-        if (res.cases && res.cases.length > 0) {
-          setActiveCase(res.cases[0]);
-          if (res.cases[0].documents) {
-            const map: Record<string, CaseDocument> = {};
-            res.cases[0].documents.forEach((d) => {
-              map[d.document_type] = d;
-            });
-            setUploadedMap(map);
-          }
-        }
-      })
-      .catch(() => {});
-
     return () => window.removeEventListener("egov_rule_updated", syncRule);
   }, []);
 
+  useEffect(() => {
+    load();
+  }, [load]);
+
   const handleFileUploadForBlock = async (blockId: string, blockTitle: string, file?: File) => {
-    const caseId = activeCase ? activeCase.id : 1;
+    if (!caseId) {
+      notify("Select or create a case before uploading documents.");
+      return;
+    }
+    if (!file) {
+      notify("Choose a PDF, JPG or PNG file (max 10 MB) to upload.");
+      return;
+    }
     setUploadingBlockId(blockId);
-
     try {
+      // The backend requires a real file and files the audit report itself, so
+      // there is no fabricated local document and no extra eMessage/eReport call.
       const res = await api.uploadDocument(caseId, blockId, blockTitle, file);
-      try {
-        await api.sendEMessage("Document Uploaded", `Uploaded document "${blockTitle}" anchored to eGovChain.`);
-        await api.submitEReport("DOCUMENT_UPLOADED", { block_id: blockId, title: blockTitle });
-      } catch (e) {}
-      notify(`Uploaded "${blockTitle}"! Cryptographic SHA-256 hash anchored to eGovChain. Hospital verification pending.`);
-
-      setUploadedMap((prev) => ({
-        ...prev,
-        [blockId]: res.document,
-      }));
+      notify(`Uploaded "${blockTitle}". Hospital verification pending.`);
+      setUploadedMap((prev) => ({ ...prev, [blockId]: res.document }));
     } catch (err: any) {
-      notify(`Uploaded "${blockTitle}" & anchored to eGovChain! Awaiting hospital verification.`);
-      // Fallback local document entry
-      const fallbackDoc: Partial<CaseDocument> = {
-        id: Date.now(),
-        medical_case_id: caseId,
-        document_type: blockId,
-        title: blockTitle,
-        storage_path: `cases/${caseId}/${blockId}.pdf`,
-        file_size: file ? file.size : 152000,
-        status: "hashed",
-        sha256_hash: `DOC-HASH-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-        verification_reference: `HSH-DOC-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-        extracted_json: {
-          blockchain_tx_hash: `0x${Math.random().toString(16).substring(2)}${Math.random().toString(16).substring(2)}`.substring(0, 42),
-          blockchain_block_number: "0x1c37b1",
-          blockchain_consensus: "IBFT 2.0 Proof of Authority (Government Nodes)",
-          full_sha256: "8f431c92a10b428d0987f65e2310ab45981273645bc890123ef890123456789a",
-        },
-      };
-      setUploadedMap((prev) => ({
-        ...prev,
-        [blockId]: fallbackDoc as CaseDocument,
-      }));
+      notify(err?.message || `"${blockTitle}" could not be uploaded.`);
     } finally {
       setUploadingBlockId(null);
     }
@@ -96,10 +90,10 @@ export function DocumentUploadView({
         over={`DOCUMENT MANAGEMENT · ${rule.agencyName.toUpperCase()} RULES`}
         title="Required Case Documents"
         text={`Documents required for ${rule.serviceTitle} under ${rule.agencyName} requirement rules. Simply click upload for each required item.`}
+        action={activeCase ? <Status tone="blue">Case {activeCase.case_number}</Status> : undefined}
       />
 
       <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-        {/* Requirement Rule Banner */}
         <div className="card" style={{ background: "#f5f3ff", border: "2.5px solid #1e1b4b", boxShadow: "0 6px 0 #1e1b4b" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem" }}>
             <div>
@@ -110,7 +104,7 @@ export function DocumentUploadView({
                 {rule.agencyName} — {rule.serviceTitle} Assistance Requirements
               </h3>
               <p style={{ color: "#4338ca", fontSize: "0.875rem", fontWeight: 600, margin: 0 }}>
-                Configure requirements in the Requirement Builder to dynamically change the document checklist below.
+                Configure requirements in the Requirement Builder to change the document checklist below.
               </p>
             </div>
             <button className="outline" onClick={() => go("builder")}>
@@ -119,195 +113,344 @@ export function DocumentUploadView({
           </div>
         </div>
 
-        {/* List of Requirement Paper Blocks */}
-        <section className="card">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem", flexWrap: "wrap", gap: "0.5rem" }}>
-            <h2 style={{ fontSize: "1.35rem", fontWeight: 900, color: "#1e1b4b", margin: 0 }}>
-              Required Document Blocks ({rule.blocks.length})
-            </h2>
-            <Status tone="green">eGovChain Zero-Fee Ledger Active</Status>
+        {error && (
+          <div role="alert" style={{ background: "#fef2f2", border: "2.5px solid #ef4444", borderRadius: 16, padding: "0.9rem 1.1rem", color: "#991b1b", fontWeight: 800, display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <AlertTriangle size={18} color="#dc2626" /> {error}
           </div>
+        )}
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "1.1rem" }}>
-            {rule.blocks.map((block) => {
-              const uploadedDoc = uploadedMap[block.id];
-              const isWalletVerified = block.alreadyInWallet;
-              const isHospitalCertified = uploadedDoc?.status === "certified" || uploadedDoc?.status === "verified";
-              const isHashedOnly = uploadedDoc && (uploadedDoc.status === "hashed" || uploadedDoc.status === "pending_hospital_verification" || uploadedDoc.status === "uploaded");
-              const isUploaded = isWalletVerified || !!uploadedDoc;
-              const isUploadingThis = uploadingBlockId === block.id;
+        {!caseId ? (
+          <section className="card">
+            <p style={{ fontWeight: 700, color: "#4338ca" }}>
+              No case is selected, so documents cannot be uploaded. Start an application or open an existing case first.
+            </p>
+            <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+              <button className="primary" onClick={() => go("apply")}>
+                Start an application
+              </button>
+              <button className="outline" onClick={() => go("dashboard")}>
+                Open my case
+              </button>
+            </div>
+          </section>
+        ) : (
+          <section className="card">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem", flexWrap: "wrap", gap: "0.5rem" }}>
+              <h2 style={{ fontSize: "1.35rem", fontWeight: 900, color: "#1e1b4b", margin: 0 }}>
+                Required Document Blocks ({rule.blocks.length})
+              </h2>
+              <button className="outline" onClick={load} disabled={loading}>
+                <RefreshCw size={16} className={loading ? "animate-spin" : ""} /> Refresh documents
+              </button>
+            </div>
 
-              const docHash = uploadedDoc?.sha256_hash || (isWalletVerified ? `DOC-HASH-${block.id.toUpperCase()}-WALLET` : null);
-              const refNum = uploadedDoc?.verification_reference || (isWalletVerified ? `EVR-${block.id.toUpperCase()}-2026` : null);
+            {loading ? (
+              <p style={{ color: "#4338ca", fontWeight: 700, display: "flex", gap: "0.4rem", alignItems: "center" }}>
+                <RefreshCw size={16} className="animate-spin" /> Loading case documents...
+              </p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.1rem" }}>
+                {rule.blocks.map((block) => {
+                  const uploadedDoc = uploadedMap[block.id];
+                  const isWalletVerified = block.alreadyInWallet;
+                  const isHospitalCertified = uploadedDoc?.status === "certified" || uploadedDoc?.status === "verified";
+                  const isHashedOnly =
+                    !!uploadedDoc && ["hashed", "pending_hospital_verification", "uploaded", "processing"].includes(uploadedDoc.status);
+                  const isUploaded = isWalletVerified || !!uploadedDoc;
+                  const isUploadingThis = uploadingBlockId === block.id;
 
-              return (
-                <div
-                  key={block.id}
-                  style={{
-                    padding: "1.2rem 1.35rem",
-                    border: "2.5px solid #1e1b4b",
-                    borderRadius: 22,
-                    background: isHospitalCertified || isWalletVerified ? "#f0fdf4" : isHashedOnly ? "#eff6ff" : "#ffffff",
-                    boxShadow: "0 4px 0 #1e1b4b",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "0.85rem",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.75rem" }}>
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: "0.85rem" }}>
-                      <div
-                        style={{
-                          padding: "0.6rem",
-                          background: isHospitalCertified || isWalletVerified ? "#dcfce7" : isHashedOnly ? "#dbeafe" : "#e0e7ff",
-                          borderRadius: 14,
-                          border: `2px solid ${isHospitalCertified || isWalletVerified ? "#166534" : isHashedOnly ? "#1d4ed8" : "#3730a3"}`,
-                        }}
-                      >
-                        <FileText size={22} color={isHospitalCertified || isWalletVerified ? "#15803d" : isHashedOnly ? "#1e40af" : "#3730a3"} />
-                      </div>
-                      <div>
-                        <b style={{ fontSize: "1.05rem", fontWeight: 900, color: "#0f172a" }}>
-                          {block.title}
-                        </b>
-                        <span style={{ display: "block", fontSize: "0.825rem", color: isHospitalCertified || isWalletVerified ? "#166534" : isHashedOnly ? "#1e40af" : "#4338ca", fontWeight: 700, marginTop: "0.15rem" }}>
-                          {block.subtitle} · {isWalletVerified ? "Auto-Verified via PhilSys / eGov Wallet" : isHospitalCertified ? "Verified & Certified by Hospital Staff" : isHashedOnly ? "Uploaded & Blockchain Hashed (Pending Hospital Verification)" : "Required — Action Needed"}
-                        </span>
-                      </div>
-                    </div>
+                  const docHash = uploadedDoc?.sha256_hash || null;
+                  const refNum = uploadedDoc?.verification_reference || null;
 
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                      {isUploaded ? (
-                        <Status tone={isWalletVerified || isHospitalCertified ? "green" : "blue"}>
-                          {isWalletVerified ? "Wallet Auto-Verified" : isHospitalCertified ? "Hospital Verified" : "Hashed (Awaiting Hospital Verification)"}
-                        </Status>
-                      ) : (
-                        <>
-                          <input
-                            id={`block-file-${block.id}`}
-                            type="file"
-                            style={{ display: "none" }}
-                            accept=".pdf,.png,.jpg,.jpeg,.docx"
-                            onChange={(e) => {
-                              if (e.target.files && e.target.files[0]) {
-                                handleFileUploadForBlock(block.id, block.title, e.target.files[0]);
-                              }
+                  return (
+                    <div
+                      key={block.id}
+                      style={{
+                        padding: "1.2rem 1.35rem",
+                        border: "2.5px solid #1e1b4b",
+                        borderRadius: 22,
+                        background: isHospitalCertified || isWalletVerified ? "#f0fdf4" : isHashedOnly ? "#eff6ff" : "#ffffff",
+                        boxShadow: "0 4px 0 #1e1b4b",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "0.85rem",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.75rem" }}>
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: "0.85rem" }}>
+                          <div
+                            style={{
+                              padding: "0.6rem",
+                              background: isHospitalCertified || isWalletVerified ? "#dcfce7" : isHashedOnly ? "#dbeafe" : "#e0e7ff",
+                              borderRadius: 14,
+                              border: `2px solid ${isHospitalCertified || isWalletVerified ? "#166534" : isHashedOnly ? "#1d4ed8" : "#3730a3"}`,
                             }}
-                          />
-                          <button
-                            className="primary"
-                            disabled={isUploadingThis}
-                            onClick={() => {
-                              const elem = document.getElementById(`block-file-${block.id}`);
-                              if (elem) elem.click();
-                            }}
-                            style={{ padding: "0.55rem 1rem", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.4rem" }}
                           >
-                            <UploadCloud size={16} />
-                            {isUploadingThis ? "Uploading & Hashing..." : "Upload Document"}
+                            <FileText size={22} color={isHospitalCertified || isWalletVerified ? "#15803d" : isHashedOnly ? "#1e40af" : "#3730a3"} />
+                          </div>
+                          <div>
+                            <b style={{ fontSize: "1.05rem", fontWeight: 900, color: "#0f172a" }}>{block.title}</b>
+                            <span style={{ display: "block", fontSize: "0.825rem", color: isHospitalCertified || isWalletVerified ? "#166534" : isHashedOnly ? "#1e40af" : "#4338ca", fontWeight: 700, marginTop: "0.15rem" }}>
+                              {block.subtitle} ·{" "}
+                              {isWalletVerified
+                                ? "Auto-Verified via PhilSys / eGov Wallet"
+                                : isHospitalCertified
+                                ? "Verified & Certified by Hospital Staff"
+                                : isHashedOnly
+                                ? "Uploaded (Pending Hospital Verification)"
+                                : "Required — Action Needed"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                          {isUploaded ? (
+                            <Status tone={isWalletVerified || isHospitalCertified ? "green" : "blue"}>
+                              {isWalletVerified ? "Wallet Auto-Verified" : isHospitalCertified ? "Hospital Verified" : "Pending Hospital Verification"}
+                            </Status>
+                          ) : (
+                            <>
+                              <input
+                                id={`block-file-${block.id}`}
+                                type="file"
+                                style={{ display: "none" }}
+                                accept=".pdf,.png,.jpg,.jpeg"
+                                onChange={(e) => {
+                                  if (e.target.files && e.target.files[0]) {
+                                    handleFileUploadForBlock(block.id, block.title, e.target.files[0]);
+                                  }
+                                  e.target.value = "";
+                                }}
+                              />
+                              <button
+                                className="primary"
+                                disabled={isUploadingThis}
+                                onClick={() => {
+                                  const elem = document.getElementById(`block-file-${block.id}`);
+                                  if (elem) elem.click();
+                                }}
+                                style={{ padding: "0.55rem 1rem", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.4rem" }}
+                              >
+                                <UploadCloud size={16} />
+                                {isUploadingThis ? "Uploading..." : "Upload Document"}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+              {/* Hash & provenance row — only for documents that really exist */}
+                      {uploadedDoc && (
+                        <div
+                          style={{
+                            background: "#ffffff",
+                            padding: "0.65rem 0.85rem",
+                            borderRadius: 14,
+                            border: `1.5px solid ${isHospitalCertified ? "#bbf7d0" : "#bfdbfe"}`,
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            flexWrap: "wrap",
+                            gap: "0.5rem",
+                            fontSize: "0.775rem",
+                          }}
+                        >
+                          <div>
+                            <span style={{ color: isHospitalCertified ? "#166534" : "#1e40af", fontWeight: 700 }}>Ref: </span>
+                            <b style={{ color: "#1e1b4b", marginRight: "0.75rem" }}>{refNum || "—"}</b>
+                            <span style={{ color: "#64748b", fontWeight: 700 }}>SHA-256 Digest: </span>
+                            <code style={{ color: isHospitalCertified ? "#15803d" : "#2563eb", fontWeight: 900, fontFamily: "monospace" }}>
+                              {docHash || "—"}
+                            </code>
+                          </div>
+
+                          <button
+                            onClick={() => setSelectedDocForProof(uploadedDoc)}
+                            style={{
+                              padding: "0.35rem 0.75rem",
+                              background: "#15803d",
+                              color: "#ffffff",
+                              border: "1.5px solid #14532d",
+                              borderRadius: 10,
+                              fontWeight: 800,
+                              fontSize: "0.75rem",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.3rem",
+                            }}
+                          >
+                            <Eye size={13} /> View integrity receipt
                           </button>
-                        </>
+                        </div>
                       )}
                     </div>
-                  </div>
+                  );
+                })}
+              </div>
+            )}
 
-                  {/* SHA-256 Cryptographic Hash & On-Chain Verification Badge */}
-                  {isUploaded && (
-                    <div style={{
-                      background: "#ffffff",
-                      padding: "0.65rem 0.85rem",
-                      borderRadius: 14,
-                      border: `1.5px solid ${isHospitalCertified || isWalletVerified ? "#bbf7d0" : "#bfdbfe"}`,
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                      gap: "0.5rem",
-                      fontSize: "0.775rem",
-                    }}>
-                      <div>
-                        <span style={{ color: isHospitalCertified || isWalletVerified ? "#166534" : "#1e40af", fontWeight: 700 }}>Ref: </span>
-                        <b style={{ color: "#1e1b4b", marginRight: "0.75rem" }}>{refNum}</b>
-                        <span style={{ color: "#64748b", fontWeight: 700 }}>SHA-256 Digest: </span>
-                        <code style={{ color: isHospitalCertified || isWalletVerified ? "#15803d" : "#2563eb", fontWeight: 900, fontFamily: "monospace" }}>
-                          {docHash}
-                        </code>
-                      </div>
-
-                      <button
-                        onClick={() =>
-                          setSelectedDocForProof(
-                            uploadedDoc || {
-                              id: Date.now(),
-                              title: block.title,
-                              document_type: block.id,
-                              status: isWalletVerified ? "verified" : "hashed",
-                              sha256_hash: docHash || "DOC-HASH-99A1F2C84B",
-                              verification_reference: refNum || "EVR-8F2A-19C0-2026",
-                              extracted_json: {
-                                full_sha256: "8f431c92a10b428d0987f65e2310ab45981273645bc890123ef890123456789a",
-                                blockchain_tx_hash: "0xd8f2910c5d12a8f9104b2819c5b201f8a920b41c",
-                                blockchain_block_number: "0x1c37b1",
-                              },
-                            }
-                          )
-                        }
-                        style={{
-                          padding: "0.35rem 0.75rem",
-                          background: "#15803d",
-                          color: "#ffffff",
-                          border: "1.5px solid #14532d",
-                          borderRadius: 10,
-                          fontWeight: 800,
-                          fontSize: "0.75rem",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.3rem",
-                        }}
-                      >
-                        <Eye size={13} /> Verify Blockchain
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <div style={{ marginTop: "1.75rem", display: "flex", justifyContent: "flex-end" }}>
-            <button className="primary" onClick={() => go("submit")}>
-              Proceed to Provider & Agency Submission <ArrowRight size={20} />
-            </button>
-          </div>
-        </section>
+            <div style={{ marginTop: "1.75rem", display: "flex", justifyContent: "flex-end" }}>
+              <button className="primary" onClick={() => go("submit")}>
+                Proceed to Provider & Agency Submission <ArrowRight size={20} />
+              </button>
+            </div>
+          </section>
+        )}
       </div>
 
-      {/* Render Blockchain Proof Modal */}
-      {selectedDocForProof && (
-        <BlockchainProofModal
-          doc={selectedDocForProof}
-          onClose={() => setSelectedDocForProof(null)}
-        />
-      )}
+      {selectedDocForProof && <BlockchainProofModal doc={selectedDocForProof} onClose={() => setSelectedDocForProof(null)} />}
     </>
   );
 }
 
+/**
+ * Shows the case's real provider and the status of the hospital record
+ * request, and lets the applicant send that request.
+ */
 export function SubmitSelectionView({
   go,
   notify,
+  selection,
 }: {
   go: (s: Screen) => void;
   notify: (s: string) => void;
+  selection: Selection;
 }) {
+  const caseId = selection.caseId;
+  const [activeCase, setActiveCase] = useState<MedicalCase | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [requesting, setRequesting] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!caseId) {
+      setActiveCase(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const res = await api.getCase(caseId);
+      setActiveCase(res.case);
+    } catch (err: any) {
+      setActiveCase(null);
+      setError(err?.message || "The case could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  }, [caseId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const requests = activeCase?.hospital_requests || [];
+  const latestRequest = requests.length > 0 ? requests[requests.length - 1] : null;
+  const applications = activeCase?.agency_applications || [];
+  const latestApplication = applications.length > 0 ? applications[applications.length - 1] : null;
+
+  const handleRequestRecords = async () => {
+    if (!caseId) return;
+    setRequesting(true);
+    setError("");
+    try {
+      await api.requestHospitalDocuments(caseId);
+      notify("Hospital record request sent.");
+      await load();
+    } catch (err: any) {
+      setError(err?.message || "The hospital record request could not be sent.");
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  if (!caseId) {
+    return (
+      <>
+        <Head over="CASE SUBMISSION" title="Provider & Agency Selection" text="Select or create a case before requesting records." />
+        <section className="card">
+          <p style={{ fontWeight: 700, color: "#4338ca" }}>No case is selected.</p>
+          <button className="primary" onClick={() => go("apply")}>
+            Start an application
+          </button>
+        </section>
+      </>
+    );
+  }
+
   return (
     <>
-      <Head over="CASE SUBMISSION" title="Provider & Agency Selection" text="Direct provider certification reduces document alteration risks." />
+      <Head
+        over="CASE SUBMISSION"
+        title="Provider & Agency Selection"
+        text="Direct provider certification reduces document alteration risks."
+        action={activeCase ? <Status tone="blue">Case {activeCase.case_number}</Status> : undefined}
+      />
+
+      {error && (
+        <div role="alert" style={{ background: "#fef2f2", border: "2.5px solid #ef4444", borderRadius: 16, padding: "0.9rem 1.1rem", marginBottom: "1.25rem", color: "#991b1b", fontWeight: 800, display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <AlertTriangle size={18} color="#dc2626" /> {error}
+        </div>
+      )}
+
       <section className="card">
-        <h2 style={{ fontSize: "1.35rem", fontWeight: 900 }}>Selected Provider: Manila General Hospital</h2>
-        <p style={{ color: "#4338ca", fontWeight: 600 }}>Requested records: Medical Abstract, Statement of Account, Physician Order.</p>
-        <button className="primary" onClick={() => go("dashboard")}>Back to Dashboard</button>
+        {loading ? (
+          <p style={{ color: "#4338ca", fontWeight: 700, display: "flex", gap: "0.4rem", alignItems: "center" }}>
+            <RefreshCw size={16} className="animate-spin" /> Loading case...
+          </p>
+        ) : !activeCase ? (
+          <p style={{ fontWeight: 700, color: "#4338ca" }}>This case could not be loaded.</p>
+        ) : (
+          <>
+            <h2 style={{ fontSize: "1.35rem", fontWeight: 900, display: "flex", alignItems: "center", gap: "0.4rem", margin: 0 }}>
+              <Building2 size={22} /> Selected Provider: {activeCase.provider?.name || "Not set"}
+            </h2>
+            <p style={{ color: "#4338ca", fontWeight: 600 }}>
+              {activeCase.patient_name} · {activeCase.condition_category} · Case {activeCase.case_number}
+            </p>
+
+            <div style={{ margin: "1.25rem 0", display: "flex", flexDirection: "column", gap: "0.6rem", fontSize: "0.9rem", fontWeight: 700 }}>
+              <div>
+                <b>Hospital record request:</b>{" "}
+                {latestRequest ? (
+                  <>
+                    <Status tone={latestRequest.status === "certified" ? "green" : "orange"}>{latestRequest.status}</Status>{" "}
+                    <span style={{ color: "#4338ca" }}>
+                      ({(latestRequest.requested_document_types || []).map((t) => t.replace(/_/g, " ")).join(", ") || "no types listed"})
+                    </span>
+                  </>
+                ) : (
+                  <span style={{ color: "#92400e" }}>Not requested yet.</span>
+                )}
+              </div>
+              <div>
+                <b>Agency application:</b>{" "}
+                {latestApplication ? (
+                  <>
+                    <Status tone="blue">{latestApplication.status?.replace(/_/g, " ") || "—"}</Status>{" "}
+                    <span style={{ color: "#4338ca" }}>
+                      ₱{Number(latestApplication.requested_amount || 0).toLocaleString("en-PH")} requested
+                    </span>
+                  </>
+                ) : (
+                  <span style={{ color: "#92400e" }}>No application submitted for this case yet.</span>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+              <button className="primary" disabled={requesting} onClick={handleRequestRecords}>
+                <RefreshCw size={18} className={requesting ? "animate-spin" : ""} />{" "}
+                {requesting ? "Requesting..." : latestRequest ? "Re-request hospital records" : "Request hospital records"}
+              </button>
+              <button className="outline" onClick={() => go("dashboard")}>
+                Back to Dashboard
+              </button>
+            </div>
+          </>
+        )}
       </section>
     </>
   );

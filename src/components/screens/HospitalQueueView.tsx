@@ -1,80 +1,149 @@
-import React, { useState } from "react";
-import { Activity, CheckCircle2, Clock3, ShieldCheck, Sparkles, Upload, FileText, Eye, Plus, Cpu } from "lucide-react";
+import React, { useCallback, useEffect, useState } from "react";
+import { Activity, CheckCircle2, Clock3, ShieldCheck, Sparkles, Eye, Plus, FileText, RefreshCw, AlertTriangle } from "lucide-react";
 import { api } from "@/lib/api";
-import { CaseDocument, Screen } from "@/types";
-import { toDisplayName } from "@/lib/names";
+import { CaseDocument, HospitalRequest, Screen, Selection } from "@/types";
 import { Head, Stat, Status } from "../common/Ui";
 import { BlockchainProofModal } from "../common/BlockchainProofModal";
 
-type ProviderRecord = { id: number; type: string; title: string; status: string; ref: string; hash: string; fullSha256: string; besuTx: string; block: string };
+const money = (n: number) =>
+  new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }).format(n);
+
+/** Document types the backend actually requests/accepts. */
+const DOC_TYPES: [string, string][] = [
+  ["statement_of_account", "Statement of Account (SOA)"],
+  ["medical_abstract", "Official Medical Abstract"],
+  ["treatment_order", "Treatment / Physician Order"],
+];
+
+const docTypeLabel = (type: string) =>
+  DOC_TYPES.find(([value]) => value === type)?.[1] || type.replace(/_/g, " ");
+
+const statusTone = (status: string) =>
+  status === "certified" ? "green" : status === "pending" ? "orange" : "blue";
 
 export function HospitalQueueView({
   go,
-  notify,
-  applicantName,
+  select,
 }: {
   go: (s: Screen) => void;
-  notify: (s: string) => void;
-  applicantName: string;
+  select: (patch: Partial<Selection>) => void;
 }) {
+  const [requests, setRequests] = useState<HospitalRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await api.getHospitalRequests();
+      setRequests(res.requests || []);
+    } catch (err: any) {
+      setRequests([]);
+      setError(err?.message || "The hospital request queue could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const pending = requests.filter((r) => r.status === "pending");
+  const processing = requests.filter((r) => r.status === "processing");
+  const certified = requests.filter((r) => r.status === "certified");
+
+  const filtered = requests.filter((r) => {
+    if (!query.trim()) return true;
+    const q = query.toLowerCase();
+    return (
+      (r.medical_case?.patient_name || "").toLowerCase().includes(q) ||
+      (r.medical_case?.case_number || "").toLowerCase().includes(q)
+    );
+  });
+
+  const openCase = (req: HospitalRequest) => {
+    select({ hospitalRequestId: req.id, caseId: req.medical_case_id });
+    go("hospital_detail");
+  };
+
   return (
     <>
-      <Head over="MANILA GENERAL HOSPITAL" title="Patient Record Requests" text="Directly upload and certify official medical records to citizen cases." />
-      
-      <div className="card" style={{ background: "#fef08a", marginBottom: "1.75rem", border: "2.5px solid #1e1b4b", boxShadow: "0 6px 0 #1e1b4b" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
-          <div>
-            <span style={{ fontSize: "0.75rem", fontWeight: 900, color: "#1e1b4b", letterSpacing: "0.08em" }}>DBM COMPASS PROVIDER GUARANTEE CEILING</span>
-            <h3 style={{ fontSize: "1.3rem", fontWeight: 900, margin: "0.1rem 0", color: "#1e1b4b" }}>Manila General Hospital — Government Guarantee Pool</h3>
-          </div>
-          <Status tone="green">Verified DBM Fund Line</Status>
+      <Head
+        over="HOSPITAL PORTAL"
+        title="Patient Record Requests"
+        text="Certify the official medical records citizens requested for their case, straight from the hospital queue."
+        action={
+          <button className="outline" onClick={load} disabled={loading}>
+            <RefreshCw size={16} className={loading ? "animate-spin" : ""} /> Refresh queue
+          </button>
+        }
+      />
+
+      {error && (
+        <div role="alert" style={{ background: "#fef2f2", border: "2.5px solid #ef4444", borderRadius: 16, padding: "0.9rem 1.1rem", marginBottom: "1.5rem", color: "#991b1b", fontWeight: 800, display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <AlertTriangle size={18} color="#dc2626" /> {error}
         </div>
-        <div className="formGrid" style={{ background: "#ffffff", padding: "1.1rem", borderRadius: 16, border: "2.5px solid #1e1b4b", fontSize: "0.9rem", fontWeight: 800, gap: "1rem" }}>
-          <div>
-            <span style={{ fontSize: "0.75rem", color: "#6366f1", display: "block" }}>Annual Approved Pool</span>
-            <b style={{ fontSize: "1.25rem", color: "#1e1b4b" }}>₱50,000,000.00</b>
-          </div>
-          <div>
-            <span style={{ fontSize: "0.75rem", color: "#6366f1", display: "block" }}>Active Utilized Guarantees</span>
-            <b style={{ fontSize: "1.25rem", color: "#d97706" }}>₱12,450,000.00</b>
-          </div>
-          <div>
-            <span style={{ fontSize: "0.75rem", color: "#6366f1", display: "block" }}>Remaining Available Pool</span>
-            <b style={{ fontSize: "1.25rem", color: "#059669" }}>₱37,550,000.00</b>
-          </div>
-        </div>
-      </div>
+      )}
 
       <div className="stats three">
-        <Stat Icon={Clock3} label="Pending Requests" value="8" note="3 received today" tone="orange" />
-        <Stat Icon={Activity} label="Processing" value="5" note="Awaiting certification" tone="blue" />
-        <Stat Icon={CheckCircle2} label="Completed This Month" value="42" note="1.8 day turnaround" tone="green" />
+        <Stat Icon={Clock3} label="Pending Requests" value={String(pending.length)} note="Awaiting hospital certification" tone="orange" />
+        <Stat Icon={Activity} label="Processing" value={String(processing.length)} note="Partially certified" tone="blue" />
+        <Stat Icon={CheckCircle2} label="Certified" value={String(certified.length)} note="All requested records certified" tone="green" />
       </div>
 
       <section className="card">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem", flexWrap: "wrap", gap: "1rem" }}>
           <h2 style={{ fontSize: "1.35rem", fontWeight: 900, margin: 0 }}>Request Queue</h2>
-          <input placeholder="Search patient name or case..." style={{ padding: "0.6rem 1rem", border: "2.5px solid #1e1b4b", borderRadius: "9999px", fontSize: "0.85rem", fontWeight: 700 }} />
+          <input
+            placeholder="Search patient name or case..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            style={{ padding: "0.6rem 1rem", border: "2.5px solid #1e1b4b", borderRadius: "9999px", fontSize: "0.85rem", fontWeight: 700 }}
+          />
         </div>
 
-        {[
-          ["Juan D. Santos", "MGL-2026-001284", `Applicant: ${toDisplayName(applicantName)} · Medical Abstract, SOA (₱150,000)`, "Pending"],
-          ["Liza P. Mendoza", "MGL-2026-001279", "Medical Abstract, SOA", "Processing"],
-          ["Roberto A. Garcia", "MGL-2026-001265", "SOA, Physician Order", "Completed"],
-        ].map(([name, num, docs, st], i) => (
-          <div key={num} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "1.1rem 0", borderBottom: "2px solid #e0e7ff", flexWrap: "wrap", gap: "1rem" }}>
-            <div>
-              <b style={{ fontSize: "1.1rem", fontWeight: 900 }}>{name}</b>
-              <small style={{ display: "block", color: "#4338ca", fontWeight: 600 }}>Case: {num} · {docs}</small>
-            </div>
-            <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
-              <Status tone={i === 2 ? "green" : "orange"}>{st}</Status>
-              <button className="primary" onClick={() => go("hospital_detail")}>
-                Open Case
-              </button>
-            </div>
-          </div>
-        ))}
+        {loading ? (
+          <p style={{ color: "#4338ca", fontWeight: 700, display: "flex", gap: "0.4rem", alignItems: "center" }}>
+            <RefreshCw size={16} className="animate-spin" /> Loading requests...
+          </p>
+        ) : filtered.length === 0 ? (
+          <p style={{ color: "#4338ca", fontWeight: 700 }}>
+            {requests.length === 0
+              ? "No document requests for this hospital yet."
+              : "No requests match that search."}
+          </p>
+        ) : (
+          filtered.map((req) => {
+            const kase = req.medical_case;
+            const docs = (req.requested_document_types || []).map(docTypeLabel).join(", ") || "No document types listed";
+            return (
+              <div
+                key={req.id}
+                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "1.1rem 0", borderBottom: "2px solid #e0e7ff", flexWrap: "wrap", gap: "1rem" }}
+              >
+                <div>
+                  <b style={{ fontSize: "1.1rem", fontWeight: 900 }}>{kase?.patient_name || "Patient name unavailable"}</b>
+                  <small style={{ display: "block", color: "#4338ca", fontWeight: 600 }}>
+                    Case: {kase?.case_number || "—"} · {docs}
+                  </small>
+                  <small style={{ display: "block", color: "#6366f1", fontWeight: 700 }}>
+                    {kase?.relationship ? `Relationship: ${kase.relationship} · ` : ""}
+                    Bill: {kase ? money(kase.verified_bill) : "—"}
+                  </small>
+                </div>
+                <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+                  <Status tone={statusTone(req.status)}>{req.status}</Status>
+                  <button className="primary" onClick={() => openCase(req)}>
+                    Open Case
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
       </section>
     </>
   );
@@ -83,205 +152,249 @@ export function HospitalQueueView({
 export function HospitalDetailView({
   go,
   notify,
+  selection,
 }: {
   go: (s: Screen) => void;
   notify: (s: string) => void;
+  selection: Selection;
 }) {
-  const [certified, setCertified] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const requestId = selection.hospitalRequestId;
+
+  const [request, setRequest] = useState<HospitalRequest | null>(null);
+  const [aiExtraction, setAiExtraction] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [busyDocId, setBusyDocId] = useState<number | null>(null);
+  const [certifyingAll, setCertifyingAll] = useState(false);
+  const [missingTypes, setMissingTypes] = useState<string[]>([]);
   const [selectedProofDoc, setSelectedProofDoc] = useState<Partial<CaseDocument> | null>(null);
 
-  // Form states
+  // Upload form
   const [docType, setDocType] = useState("statement_of_account");
   const [docTitle, setDocTitle] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
 
-  // Default records list (including hospital records and citizen-uploaded hashed documents)
-  const [records, setRecords] = useState<any[]>([
-    {
-      id: 200,
-      type: "indigency",
-      title: "Barangay Certificate of Indigency (Uploaded by Citizen)",
-      sub: "Citizen upload · Cryptographic hash anchored to eGovChain (Awaiting Hospital Verification)",
-      status: "hashed",
-      ref: "HSH-DOC-8B7C6D5E",
-      hash: "DOC-HASH-8B7C6D5E4F3A",
-      fullSha256: "8b7c6d5e4f3a9920192837410293847102938471029384710293847102938471",
-      besuTx: "0x8b7c6d5e4f3a9920192837410293847102938471",
-      block: "0x1c37b0",
-      uploadedByCitizen: true,
-    },
-    {
-      id: 201,
-      type: "statement_of_account",
-      title: "Certified Statement of Account (₱150,000.00)",
-      sub: "Hospital itemized billing summary ref SOA-MGH-992",
-      status: "draft",
-      ref: "HSP-REF-88A1901B",
-      hash: "DOC-HASH-99A1F2C84B",
-      fullSha256: "8f431c92a10b428d0987f65e2310ab45981273645bc890123ef890123456789a",
-      besuTx: "0x98f2190c5d12a8f9104b2819c5b201f8a920b41c",
-      block: "0x1c37b1",
-    },
-    {
-      id: 202,
-      type: "medical_abstract",
-      title: "Official Medical Abstract & Clinical Summary",
-      sub: "Laparoscopic appendectomy summary signed by Dr. Ana Reyes",
-      status: "draft",
-      ref: "HSP-REF-77C102A1",
-      hash: "DOC-HASH-77B41C90",
-      fullSha256: "77b41c90129bc8173499210982c716e9102934812b123984712093847123490a",
-      besuTx: "0x7a31b209c12df882a1099238bc110a273b40",
-      block: "0x1c37b3",
-    },
-    {
-      id: 203,
-      type: "treatment_order",
-      title: "Physician Treatment & Diagnostic Order",
-      sub: "Dr. Ana Reyes order ref ORD-MGH-102",
-      status: "draft",
-      ref: "HSP-REF-55A901C2",
-      hash: "DOC-HASH-55C19A82",
-      fullSha256: "55c19a8209182374901283740912837409128374091283740912837409128374",
-      besuTx: "0x44b91010a2938102938410293840192384910293",
-      block: "0x1c37b5",
-    },
-  ]);
-
-  const handleVerifySingleRecord = async (recId: number) => {
+  const load = useCallback(async () => {
+    if (!requestId) {
+      setRequest(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError("");
     try {
-      await api.certifyDocument(recId);
-      await api.sendEMessage("Official Record Certified", "Hospital staff Dr. Ana Reyes verified & certified citizen medical document.");
-      await api.submitEReport("HOSPITAL_DOCUMENT_CERTIFIED", { record_id: recId });
-    } catch (e) {}
-    setRecords((prev) =>
-      prev.map((r) => (r.id === recId ? { ...r, status: "certified" } : r))
-    );
-    notify("Document verified and certified on eGovChain by Dr. Ana Reyes!");
+      const res = await api.getHospitalRequest(requestId);
+      setRequest(res.request);
+      setAiExtraction(res.ai_extraction || (res.request?.medical_case as any)?.ai_summary || null);
+    } catch (err: any) {
+      setRequest(null);
+      setError(err?.message || "That hospital request could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  }, [requestId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const kase = request?.medical_case;
+  const records: CaseDocument[] = kase?.documents || [];
+
+  const proofDocFor = (doc: CaseDocument): Partial<CaseDocument> => ({
+    id: doc.id,
+    title: doc.title,
+    document_type: doc.document_type,
+    status: doc.status,
+    sha256_hash: doc.sha256_hash,
+    verification_reference: doc.verification_reference,
+    extracted_json: doc.extracted_json,
+  });
+
+  const handleCertifyOne = async (doc: CaseDocument) => {
+    setBusyDocId(doc.id);
+    try {
+      await api.certifyDocument(doc.id);
+      notify(`"${doc.title}" certified.`);
+      await load();
+    } catch (err: any) {
+      notify(err?.message || `"${doc.title}" could not be certified.`);
+    } finally {
+      setBusyDocId(null);
+    }
+  };
+
+  const handleCertifyAndAnchor = async () => {
+    if (!request) return;
+    setCertifyingAll(true);
+    try {
+      const res = await api.submitHospitalDocuments(request.id);
+      const missing = res.missing || [];
+      setMissingTypes(missing);
+      notify(
+        missing.length
+          ? `${res.documents?.length || 0} record(s) certified. Still missing: ${missing.map(docTypeLabel).join(", ")}.`
+          : res.message || "All requested records certified and anchored."
+      );
+      await load();
+      // The statement of account is the document the guarantee settles against.
+      const soa =
+        (res.documents || []).find((d) => d.document_type === "statement_of_account") ||
+        (res.documents || [])[0];
+      if (soa) setSelectedProofDoc(proofDocFor(soa));
+    } catch (err: any) {
+      notify(err?.message || "The documents could not be certified.");
+    } finally {
+      setCertifyingAll(false);
+    }
   };
 
   const handleUploadAndCertify = async (e: React.FormEvent) => {
     e.preventDefault();
-    const titleToUse = docTitle.trim() || `Official ${docType.replace(/_/g, " ").toUpperCase()}`;
-
+    if (!request) return;
+    const caseId = request.medical_case_id;
+    const titleToUse = docTitle.trim() || `Official ${docTypeLabel(docType)}`;
+    setUploadError("");
     setUploading(true);
     try {
-      const res = await api.uploadHospitalDocument(1, docType, titleToUse, selectedFile || undefined);
-      try {
-        await api.sendEMessage("Hospital Record Uploaded", `Official hospital record "${titleToUse}" uploaded & certified.`);
-        await api.submitEReport("HOSPITAL_RECORD_UPLOADED", { doc_type: docType, title: titleToUse });
-      } catch (e) {}
-      notify("Official medical record uploaded, certified, and anchored to eGovChain!");
-
-      const meta = (res.document.extracted_json as any) || {};
-      const newRec = {
-        id: res.document.id,
-        type: res.document.document_type,
-        title: res.document.title,
-        sub: `Certified by Dr. Ana Reyes · ${selectedFile ? selectedFile.name : "Uploaded PDF"}`,
-        status: "certified",
-        ref: res.document.verification_reference || "HSP-REF-NEW",
-        hash: res.document.sha256_hash || "DOC-HASH-NEW",
-        fullSha256: meta.full_sha256 || "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        besuTx: meta.blockchain_tx_hash || "0x98f2190c5d12a8f9104b2819c5b201f8a920b41c",
-        block: meta.blockchain_block_number || "0x1c37b1",
-      };
-
-      setRecords((prev) => [newRec, ...prev]);
+      const res = await api.uploadHospitalDocument(caseId, docType, titleToUse, selectedFile || undefined, request.id);
+      notify(`"${res.document.title}" uploaded, certified and anchored.`);
       setDocTitle("");
       setSelectedFile(null);
+      await load();
     } catch (err: any) {
-      notify(`Hospital upload note: ${err?.message || "Record certified & anchored!"}`);
+      setUploadError(err?.message || "The hospital document could not be uploaded.");
     } finally {
       setUploading(false);
     }
   };
 
-  const handleBatchCertifyAll = async () => {
-    try {
-      await api.submitHospitalDocuments(1);
-    } catch (e) {}
-    setCertified(true);
-    setRecords((prev) =>
-      prev.map((r) => ({
-        ...r,
-        status: "certified",
-      }))
+  if (!requestId) {
+    return (
+      <>
+        <Head over="OFFICIAL RECORD CERTIFICATION" title="No request selected" text="Open a request from the hospital queue to certify its records." />
+        <section className="card">
+          <p style={{ fontWeight: 700, color: "#4338ca" }}>Select a patient request from the queue first.</p>
+          <button className="primary" onClick={() => go("hospital")}>
+            Back to request queue
+          </button>
+        </section>
+      </>
     );
-    notify("All patient medical records certified & anchored to eGovChain blockchain; citizen & DSWD notified!");
-    // Pop the Statement of Account's eGovChain proof (tx hash, block, zero gas) right after anchoring
-    const soa = records.find((r) => r.type === "statement_of_account");
-    if (soa) setSelectedProofDoc(proofDocFor(soa, true));
-  };
-
-  const proofDocFor = (rec: ProviderRecord, isCertified: boolean): Partial<CaseDocument> => ({
-    id: rec.id,
-    title: rec.title,
-    document_type: rec.type,
-    status: (isCertified ? "certified" : rec.status) as CaseDocument["status"],
-    sha256_hash: rec.hash,
-    verification_reference: rec.ref,
-    extracted_json: {
-      full_sha256: rec.fullSha256,
-      blockchain_tx_hash: rec.besuTx,
-      blockchain_block_number: rec.block,
-    },
-  });
+  }
 
   return (
     <>
-      <Head over="OFFICIAL RECORD CERTIFICATION" title="Patient: Juan D. Santos" text="Case MGL-2026-001284 · Manila General Hospital" />
+      <Head
+        over={kase?.provider?.name ? kase.provider.name.toUpperCase() : "OFFICIAL RECORD CERTIFICATION"}
+        title={kase ? `Patient: ${kase.patient_name}` : "Loading request..."}
+        text={kase ? `Case ${kase.case_number} · Bill ${money(kase.verified_bill)}` : "Loading the selected hospital request."}
+        action={
+          <button className="outline" onClick={() => go("hospital")}>
+            ← Back to queue
+          </button>
+        }
+      />
+
+      {error && (
+        <div role="alert" style={{ background: "#fef2f2", border: "2.5px solid #ef4444", borderRadius: 16, padding: "0.9rem 1.1rem", marginBottom: "1.5rem", color: "#991b1b", fontWeight: 800, display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <AlertTriangle size={18} color="#dc2626" /> {error}
+        </div>
+      )}
 
       <div className="cols">
-        {/* Main Column: Records List & Batch Action */}
         <section className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem", flexWrap: "wrap", gap: "0.5rem" }}>
             <h2 style={{ fontSize: "1.35rem", fontWeight: 900, margin: 0 }}>Official Provider Records & Verification</h2>
-            <button
-              className="primary"
-              disabled={certified}
-              onClick={handleBatchCertifyAll}
-            >
-              <ShieldCheck size={18} /> {certified ? "All Records Certified & Anchored" : "Certify & Anchor to Blockchain"}
+            <button className="primary" disabled={certifyingAll || loading || !request} onClick={handleCertifyAndAnchor}>
+              <ShieldCheck size={18} /> {certifyingAll ? "Certifying & anchoring..." : "Certify & Anchor"}
             </button>
           </div>
 
-          {/* List of Hospital Certified Records */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem", margin: "1.25rem 0" }}>
-            {records.map((rec) => (
-              <div
-                key={rec.id}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.75rem",
-                  padding: "1.1rem 1.25rem",
-                  border: "2.5px solid #1e1b4b",
-                  borderRadius: 20,
-                  background: rec.status === "certified" || certified ? "#f0fdf4" : rec.status === "hashed" ? "#eff6ff" : "#ffffff",
-                  boxShadow: "0 4px 0 #1e1b4b",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem" }}>
-                  <div>
-                    <b style={{ fontSize: "1.05rem", fontWeight: 900, color: "#0f172a" }}>{rec.title}</b>
-                    <small style={{ display: "block", color: rec.status === "hashed" ? "#1e40af" : "#4338ca", fontWeight: 600, marginTop: "0.15rem" }}>
-                      {rec.sub} · Ref: {rec.ref}
-                    </small>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                    <Status tone={rec.status === "certified" || certified ? "green" : rec.status === "hashed" ? "blue" : "orange"}>
-                      {rec.status === "certified" || certified ? "Hospital Certified" : rec.status === "hashed" ? "Citizen Upload (Hashed)" : "Pending Certification"}
-                    </Status>
-                    {rec.status === "hashed" && !certified && (
+          <p style={{ color: "#4338ca", fontWeight: 700, marginTop: 0 }}>
+            Requested: {(request?.requested_document_types || []).map(docTypeLabel).join(", ") || "—"} ·{" "}
+            <Status tone={statusTone(request?.status || "pending")}>{request?.status || "—"}</Status>
+          </p>
+
+          {missingTypes.length > 0 && (
+            <div style={{ background: "#fef3c7", border: "2px solid #d97706", borderRadius: 14, padding: "0.75rem 1rem", marginBottom: "1rem", color: "#92400e", fontWeight: 800 }}>
+              No uploaded document exists for: {missingTypes.map(docTypeLabel).join(", ")}. Upload one below — nothing is invented on the citizen&apos;s behalf.
+            </div>
+          )}
+
+          {loading ? (
+            <p style={{ color: "#4338ca", fontWeight: 700, display: "flex", gap: "0.4rem", alignItems: "center" }}>
+              <RefreshCw size={16} className="animate-spin" /> Loading case documents...
+            </p>
+          ) : records.length === 0 ? (
+            <p style={{ color: "#4338ca", fontWeight: 700 }}>This case has no uploaded documents yet.</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem", margin: "1.25rem 0" }}>
+              {records.map((doc) => {
+                const isCertified = doc.status === "certified" || doc.status === "verified";
+                return (
+                  <div
+                    key={doc.id}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "0.75rem",
+                      padding: "1.1rem 1.25rem",
+                      border: "2.5px solid #1e1b4b",
+                      borderRadius: 20,
+                      background: isCertified ? "#f0fdf4" : doc.status === "hashed" ? "#eff6ff" : "#ffffff",
+                      boxShadow: "0 4px 0 #1e1b4b",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem" }}>
+                      <div>
+                        <b style={{ fontSize: "1.05rem", fontWeight: 900, color: "#0f172a" }}>{doc.title}</b>
+                        <small style={{ display: "block", color: "#4338ca", fontWeight: 600, marginTop: "0.15rem" }}>
+                          {docTypeLabel(doc.document_type)} · Ref: {doc.verification_reference || "—"}
+                        </small>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <Status tone={isCertified ? "green" : doc.status === "hashed" ? "blue" : "orange"}>
+                          {isCertified ? "Hospital Certified" : doc.status === "hashed" ? "Citizen Upload (Hashed)" : "Pending Certification"}
+                        </Status>
+                        {!isCertified && (
+                          <button
+                            onClick={() => handleCertifyOne(doc)}
+                            disabled={busyDocId === doc.id}
+                            style={{
+                              padding: "0.35rem 0.75rem",
+                              background: "#059669",
+                              color: "#ffffff",
+                              border: "1.5px solid #047857",
+                              borderRadius: 10,
+                              fontWeight: 800,
+                              fontSize: "0.75rem",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.3rem",
+                            }}
+                          >
+                            <ShieldCheck size={13} /> {busyDocId === doc.id ? "Certifying..." : "Verify & Certify"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ background: "#f8fafc", padding: "0.6rem 0.8rem", borderRadius: 12, border: "1.5px solid #cbd5e1", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem", fontSize: "0.775rem" }}>
+                      <div>
+                        <span style={{ color: "#64748b", fontWeight: 700 }}>SHA-256 Digest: </span>
+                        <code style={{ color: "#1e1b4b", fontWeight: 900, fontFamily: "monospace" }}>{doc.sha256_hash || "—"}</code>
+                      </div>
                       <button
-                        onClick={() => handleVerifySingleRecord(rec.id)}
+                        onClick={() => setSelectedProofDoc(proofDocFor(doc))}
                         style={{
                           padding: "0.35rem 0.75rem",
-                          background: "#059669",
+                          background: "#15803d",
                           color: "#ffffff",
-                          border: "1.5px solid #047857",
+                          border: "1.5px solid #14532d",
                           borderRadius: 10,
                           fontWeight: 800,
                           fontSize: "0.75rem",
@@ -291,59 +404,26 @@ export function HospitalDetailView({
                           gap: "0.3rem",
                         }}
                       >
-                        <ShieldCheck size={13} /> Verify & Certify
+                        <Eye size={13} /> View chain receipt
                       </button>
-                    )}
+                    </div>
                   </div>
-                </div>
+                );
+              })}
+            </div>
+          )}
 
-                {/* SHA-256 Hash & Verification Row */}
-                <div style={{
-                  background: "#f8fafc",
-                  padding: "0.6rem 0.8rem",
-                  borderRadius: 12,
-                  border: "1.5px solid #cbd5e1",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: "0.5rem",
-                  fontSize: "0.775rem",
-                }}>
-                  <div>
-                    <span style={{ color: "#64748b", fontWeight: 700 }}>SHA-256 Digest: </span>
-                    <code style={{ color: "#1e1b4b", fontWeight: 900, fontFamily: "monospace" }}>
-                      {rec.hash}
-                    </code>
-                  </div>
-                  <button
-                    onClick={() => setSelectedProofDoc(proofDocFor(rec, rec.status === "certified" || certified))}
-                    style={{
-                      padding: "0.35rem 0.75rem",
-                      background: "#15803d",
-                      color: "#ffffff",
-                      border: "1.5px solid #14532d",
-                      borderRadius: 10,
-                      fontWeight: 800,
-                      fontSize: "0.75rem",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.3rem",
-                    }}
-                  >
-                    <Eye size={13} /> Verify On eGovChain
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Form to Upload New Official Hospital Document */}
+          {/* Upload a new official hospital document */}
           <div style={{ marginTop: "1.75rem", padding: "1.25rem", border: "2.5px solid #1e1b4b", borderRadius: 20, background: "#f8fafc" }}>
             <h3 style={{ fontSize: "1.1rem", fontWeight: 900, color: "#1e1b4b", marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
-              <Plus size={18} /> Upload & Certify Additional Hospital File
+              <Plus size={18} /> Upload & Certify an Official Hospital File
             </h3>
+
+            {uploadError && (
+              <div role="alert" style={{ background: "#fef2f2", border: "2px solid #ef4444", borderRadius: 12, padding: "0.6rem 0.9rem", marginBottom: "0.85rem", color: "#991b1b", fontWeight: 800, display: "flex", gap: "0.4rem", alignItems: "center" }}>
+                <AlertTriangle size={16} color="#dc2626" /> {uploadError}
+              </div>
+            )}
 
             <form onSubmit={handleUploadAndCertify} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
@@ -354,19 +434,13 @@ export function HospitalDetailView({
                   <select
                     value={docType}
                     onChange={(e) => setDocType(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "0.65rem 0.85rem",
-                      borderRadius: 12,
-                      border: "2px solid #1e1b4b",
-                      fontWeight: 700,
-                      fontSize: "0.85rem",
-                    }}
+                    style={{ width: "100%", padding: "0.65rem 0.85rem", borderRadius: 12, border: "2px solid #1e1b4b", fontWeight: 700, fontSize: "0.85rem" }}
                   >
-                    <option value="statement_of_account">Statement of Account (SOA)</option>
-                    <option value="medical_abstract">Official Medical Abstract</option>
-                    <option value="physician_order">Physician Treatment Order</option>
-                    <option value="diagnostic_report">Diagnostic / Lab Result</option>
+                    {DOC_TYPES.map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -376,17 +450,10 @@ export function HospitalDetailView({
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Itemized Surgical SOA ₱150,000"
+                    placeholder="e.g. Itemized Surgical SOA"
                     value={docTitle}
                     onChange={(e) => setDocTitle(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "0.65rem 0.85rem",
-                      borderRadius: 12,
-                      border: "2px solid #1e1b4b",
-                      fontWeight: 700,
-                      fontSize: "0.85rem",
-                    }}
+                    style={{ width: "100%", padding: "0.65rem 0.85rem", borderRadius: 12, border: "2px solid #1e1b4b", fontWeight: 700, fontSize: "0.85rem" }}
                   />
                 </div>
               </div>
@@ -403,51 +470,65 @@ export function HospitalDetailView({
                       if (!docTitle) setDocTitle(e.target.files[0].name.replace(/\.[^/.]+$/, ""));
                     }
                   }}
-                  style={{
-                    width: "100%",
-                    padding: "0.5rem",
-                    borderRadius: 12,
-                    border: "2px solid #1e1b4b",
-                    fontSize: "0.85rem",
-                    background: "#ffffff",
-                  }}
+                  style={{ width: "100%", padding: "0.5rem", borderRadius: 12, border: "2px solid #1e1b4b", fontSize: "0.85rem", background: "#ffffff" }}
                   accept=".pdf,.png,.jpg,.jpeg"
                 />
+                <small style={{ display: "block", marginTop: "0.3rem", color: "#6366f1", fontWeight: 700 }}>
+                  Without a file the server certifies the record from its own stored copy — attach one whenever the hospital holds the original.
+                </small>
               </div>
 
-              <button type="submit" className="primary wide" disabled={uploading}>
+              <button type="submit" className="primary wide" disabled={uploading || !request}>
                 {uploading ? "Hashing & Certifying..." : "Upload & Certify Record"}
               </button>
             </form>
           </div>
         </section>
 
-        {/* Sidebar Column: eGov AI Summary */}
         <aside>
           <div className="card ai">
-            <h3><Sparkles size={20} /> eGov AI Medical Billing Extraction</h3>
-            <p>
-              <b>Patient:</b> Juan D. Santos<br />
-              <b>Diagnosis:</b> Acute appendicitis<br />
-              <b>Procedure:</b> Laparoscopic appendectomy<br />
-              <b>Verified Bill:</b> ₱150,000.00
-            </p>
-            <div style={{ marginTop: "1rem", paddingTop: "0.75rem", borderTop: "1.5px solid #e0e7ff", fontSize: "0.8rem" }}>
-              <b style={{ color: "#3730a3", display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                <Cpu size={15} /> Hyperledger Besu Network
-              </b>
-              <span>IBFT 2.0 Proof of Authority zero-gas network validates hospital signatures.</span>
-            </div>
+            <h3>
+              <Sparkles size={20} /> eGov AI Case Extraction
+            </h3>
+            {aiExtraction?.summary ? (
+              <>
+                <p>{aiExtraction.summary}</p>
+                <div style={{ marginTop: "0.75rem", fontSize: "0.85rem", fontWeight: 700, display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                  <div>
+                    Completeness: <b>{typeof aiExtraction.completeness_score === "number" ? `${aiExtraction.completeness_score}%` : "—"}</b>
+                  </div>
+                  <div>
+                    Missing:{" "}
+                    <b>
+                      {Array.isArray(aiExtraction.missing_requirements) && aiExtraction.missing_requirements.length > 0
+                        ? aiExtraction.missing_requirements.map(docTypeLabel).join(", ")
+                        : "None"}
+                    </b>
+                  </div>
+                </div>
+                <small style={{ display: "block", marginTop: "0.5rem", color: "#4338ca", fontWeight: 700 }}>
+                  {aiExtraction.disclaimer || "AI-generated summary — subject to evaluator review."}
+                </small>
+              </>
+            ) : (
+              <p style={{ fontWeight: 700, color: "#4338ca" }}>
+                {loading ? "Loading AI extraction..." : "No AI extraction is available for this case yet."}
+              </p>
+            )}
+            {aiExtraction?.ledger_note && (
+              <div style={{ marginTop: "1rem", paddingTop: "0.75rem", borderTop: "1.5px solid #e0e7ff", fontSize: "0.8rem" }}>
+                <b style={{ color: "#3730a3", display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                  <FileText size={15} /> Ledger status
+                </b>
+                <span>{aiExtraction.ledger_note}</span>
+              </div>
+            )}
           </div>
         </aside>
       </div>
 
-      {/* Render Blockchain Proof Modal */}
       {selectedProofDoc && (
-        <BlockchainProofModal
-          doc={selectedProofDoc}
-          onClose={() => setSelectedProofDoc(null)}
-        />
+        <BlockchainProofModal doc={selectedProofDoc} onClose={() => setSelectedProofDoc(null)} />
       )}
     </>
   );

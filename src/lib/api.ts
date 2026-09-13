@@ -3,32 +3,134 @@ import { AgencyApplication, AgencyProgram, AuditEvent, CaseDocument, Financials,
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000/api/v1';
 const API_ROOT = process.env.NEXT_PUBLIC_API_ROOT || 'http://localhost:8000';
 
+/**
+ * Bearer token for the Laravel Sanctum session.
+ *
+ * Every API route sits behind `auth:sanctum`, so requests without this token
+ * are answered 401 and wrong-role requests 403. The token lives in
+ * localStorage so a reload keeps the session; it is never a shared secret.
+ */
+const TOKEN_STORAGE_KEY = 'gabaymed_token';
+
+let AUTH_TOKEN: string | null =
+  typeof window !== 'undefined' ? window.localStorage.getItem(TOKEN_STORAGE_KEY) : null;
+
+export function setAuthToken(token: string | null): void {
+  AUTH_TOKEN = token;
+  if (typeof window === 'undefined') return;
+  try {
+    if (token) window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    else window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    // Storage may be unavailable (private mode); the in-memory token still works.
+  }
+}
+
+export function getAuthToken(): string | null {
+  return AUTH_TOKEN;
+}
+
+/** Authorization header for the current session, when there is one. */
+const authHeaders = (): Record<string, string> =>
+  AUTH_TOKEN ? { Authorization: `Bearer ${AUTH_TOKEN}` } : {};
+
+/** An HTTP failure returned by the GabayMed backend (never a network failure). */
+export class ApiError extends Error {
+  status: number;
+  payload: any;
+
+  constructor(message: string, status: number, payload: any) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
+export const isApiError = (err: unknown): err is ApiError => err instanceof ApiError;
+
+/** Pulls a human-readable message out of a Laravel error body. */
+function errorMessage(body: any, status: number): string {
+  if (body && typeof body === 'object') {
+    if (typeof body.message === 'string' && body.message) return body.message;
+    if (body.errors && typeof body.errors === 'object') {
+      const first = Object.values(body.errors as Record<string, unknown[]>)
+        .flat()
+        .find((v) => typeof v === 'string');
+      if (typeof first === 'string') return first;
+    }
+  }
+  return `API error (${status})`;
+}
+
+/**
+ * Marks a canned sandbox payload so the UI can label it honestly. Only
+ * Integration Hub demo calls still fall back; core workflow calls never do.
+ */
+const SANDBOX_MARKER = '__gabaymedSandbox';
+
+function markSandbox<T>(value: T, endpoint: string): T {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    try {
+      Object.defineProperty(value as object, SANDBOX_MARKER, {
+        value: {
+          endpoint,
+          note: 'sandbox response — backend unreachable, canned demo payload',
+        },
+        enumerable: false,
+        configurable: true,
+      });
+    } catch {
+      // Frozen payloads simply cannot carry the marker; the Hub shows its own badge.
+    }
+  }
+  return value;
+}
+
+export const isSandboxResponse = (value: unknown): boolean =>
+  !!(value && typeof value === 'object' && (value as any)[SANDBOX_MARKER]);
+
+export const sandboxResponseInfo = (value: unknown): { endpoint: string; note: string } | null =>
+  (value && typeof value === 'object' && ((value as any)[SANDBOX_MARKER] || null)) || null;
+
+/**
+ * Single HTTP entry point.
+ *
+ * Real HTTP errors (4xx/5xx) are always surfaced as ApiError so screens can
+ * show them — they are never silently replaced by canned data. A fallback is
+ * only consulted when the request could not reach the backend at all, and only
+ * the Integration Hub demo calls pass one.
+ */
 async function request<T>(endpoint: string, options: RequestInit = {}, useRoot: boolean = false, fallbackSupplier?: () => T): Promise<T> {
   const headers = {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
+    ...authHeaders(),
     ...(options.headers || {}),
   };
 
   const baseUrl = useRoot ? API_ROOT : API_BASE;
 
+  let res: Response;
   try {
-    const res = await fetch(`${baseUrl}${endpoint}`, {
+    res = await fetch(`${baseUrl}${endpoint}`, {
       ...options,
       headers,
     });
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.message || `API error (${res.status})`);
-    }
-    return await res.json();
-  } catch (err: any) {
-    console.warn(`API request to ${baseUrl}${endpoint} failed. Utilizing robust eGov catalog fallback mock.`, err);
+  } catch (networkErr) {
     if (fallbackSupplier) {
-      return fallbackSupplier();
+      console.warn(`[sandbox] ${baseUrl}${endpoint} unreachable; returning canned Integration Hub payload.`, networkErr);
+      return markSandbox(fallbackSupplier(), endpoint);
     }
-    throw err;
+    throw new Error(`Could not reach the GabayMed API at ${baseUrl}${endpoint}. Check that the backend is running.`);
   }
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new ApiError(errorMessage(errorData, res.status), res.status, errorData);
+  }
+
+  return await res.json();
 }
 
 export const api = {
@@ -107,13 +209,7 @@ export const api = {
   async eVerifyAuth(): Promise<any> {
     return request<any>('/api/auth', {
       method: 'POST',
-    }, true, () => ({
-      data: {
-        access_token: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJjbGllbnRfaWQiOiJhMjRiZWY4Ni04ODI2LTQ4ZjctYWFjNS05NzhjYTU4MDVjMjkiLCJzY29wZSI6IkVWRVJJRllfUkVBRCIsImV4cCI6MTcyNDIyMzc3Mn0.sig",
-        token_type: "Bearer",
-        expires_at: "1724223772",
-      },
-    }));
+    }, true);
   },
 
   async eVerifyQuery(data: any, token: string = ''): Promise<any> {
@@ -121,32 +217,7 @@ export const api = {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: JSON.stringify(data),
-    }, true, () => ({
-      data: {
-        code: "AAA000",
-        token: "268259975162549530929556586925358978",
-        reference: "3013490625984368",
-        face_url: "https://liveness.photo.url/image.jpg?expires=123",
-        full_name: `${(data.first_name || 'JUAN').toUpperCase()} ${(data.middle_name || 'SANTOS').toUpperCase()} ${(data.last_name || 'DELA CRUZ').toUpperCase()}`,
-        first_name: (data.first_name || 'JUAN').toUpperCase(),
-        middle_name: (data.middle_name || 'SANTOS').toUpperCase(),
-        last_name: (data.last_name || 'DELA CRUZ').toUpperCase(),
-        suffix: data.suffix || null,
-        gender: "Male",
-        marital_status: "Single",
-        blood_type: "A",
-        email: "josie@yopmail.com",
-        mobile_number: "639090000000",
-        birth_date: data.birth_date || "1990-01-01",
-        full_address: "123 Sample Street, Sample Barangay, Sample City, Sample Province, Philippines, 1000",
-        barangay: "Sample Barangay",
-        municipality: "Sample City",
-        province: "Sample Province",
-        country: "Philippines",
-        postal_code: "1000",
-      },
-      meta: { tier_level: "Tier II", result_grade: 1 },
-    }));
+    }, true);
   },
 
   async eVerifyQrCheck(value: string, token: string = ''): Promise<any> {
@@ -154,10 +225,7 @@ export const api = {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: JSON.stringify({ value }),
-    }, true, () => ({
-      data: { pcn: "9639-9547-6266-4080" },
-      meta: { qr_type: "Philsys Card Number" },
-    }));
+    }, true);
   },
 
   async eVerifyQrVerify(value: string, faceLivenessSessionId: string, token: string = ''): Promise<any> {
@@ -165,45 +233,24 @@ export const api = {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: JSON.stringify({ value, face_liveness_session_id: faceLivenessSessionId }),
-    }, true, () => ({
-      data: {
-        code: "AAA001",
-        token: "TOKEN-1",
-        reference: "1234123412341324",
-        face_url: "https://ekycbucket.s3.ap-southeast-1.amazonaws.com/954/faces/4923973421832871.jpg",
-        full_name: "JUAN SANTOS DELA CRUZ",
-        first_name: "JUAN",
-        middle_name: "SANTOS",
-        last_name: "DELA CRUZ",
-        suffix: "JR",
-        gender: "Male",
-        birth_date: "1989-09-12",
-        full_address: "1123 RIZAL ST., POBLACION, CITY OF ALAMINOS, PANGASINAN, PHILIPPINES",
-      },
-      meta: { tier_level: "Tier II", result_grade: 1 },
-    }));
+    }, true);
   },
 
   // --- 3. Face Liveness ---
   // x-api-key is injected server-side; it must never reach the browser bundle.
+  // No canned fallback: a fabricated "SUCCEEDED · 98.71%" would fake a
+  // biometric match that never happened.
   async createLivenessSession(action: string = 'redirect', callbackUrl: string = 'https://your-app.com/callback', delay: number = 3000): Promise<{ token: string; url: string }> {
     return request<{ token: string; url: string }>('/v1/liveness/session', {
       method: 'POST',
       body: JSON.stringify({ action, callback_url: callbackUrl, delay }),
-    }, true, () => ({
-      token: "a1b3fae6-af74-4896-bd58-32a81604de01",
-      url: `https://hackathon-face-liveness.e.gov.ph/liveness?token=a1b3fae6-af74-4896-bd58-32a81604de01&action=${action}&callbackUrl=${encodeURIComponent(callbackUrl)}&delay=${delay}`,
-    }));
+    }, true);
   },
 
   async getLivenessResult(sessionToken: string): Promise<{ status: string; confidence_score: number; reference_image_url: string }> {
     return request<{ status: string; confidence_score: number; reference_image_url: string }>(`/v1/liveness/result/${sessionToken}`, {
       method: 'GET',
-    }, true, () => ({
-      status: "SUCCEEDED",
-      confidence_score: 98.71,
-      reference_image_url: `https://face-liveness-audit-staging-tokyo.s3.ap-northeast-1.amazonaws.com/liveness-audits/${sessionToken}/reference.jpg`,
-    }));
+    }, true);
   },
 
   // --- 4. eGov AI ---
@@ -288,23 +335,35 @@ export const api = {
     }));
   },
 
+  /**
+   * Integration Hub demo call: falls back to a canned sandbox extraction when
+   * the eGov AI endpoint is unreachable (the Hub labels the result).
+   */
   async extractDocument(formData: FormData, token: string = ''): Promise<{ data: string }> {
+    let res: Response;
     try {
-      const res = await fetch(`${API_ROOT}/api/v1/egov/integration/document_extractor/generate`, {
+      res = await fetch(`${API_ROOT}/api/v1/egov/integration/document_extractor/generate`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { ...authHeaders(), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: formData,
       });
-      if (!res.ok) throw new Error("Document extraction error");
-      return await res.json();
-    } catch (e) {
-      return {
-        data: "Here's the information extracted from the document:<br><br><b>Document Type:</b> Philippine Driver's License / Official Medical Abstract<br><b>Issuing Authority:</b> REPUBLIC OF THE PHILIPPINES<br><b>License Number:</b> N01-18-928491<br><b>Full Name:</b> JOSIE SANTOS DELA CRUZ<br><b>Expiry Date:</b> 2030-08-29",
-      };
+    } catch {
+      return markSandbox(
+        {
+          data: "Here's the information extracted from the document:<br><br><b>Document Type:</b> Philippine Driver's License / Official Medical Abstract<br><b>Issuing Authority:</b> REPUBLIC OF THE PHILIPPINES<br><b>License Number:</b> N01-18-928491<br><b>Full Name:</b> JOSIE SANTOS DELA CRUZ<br><b>Expiry Date:</b> 2030-08-29",
+        },
+        '/api/v1/egov/integration/document_extractor/generate'
+      );
     }
+
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new ApiError(errorMessage(body, res.status), res.status, body);
+    }
+    return body;
   },
 
-  // --- 5. eGovChain (Hyperledger Besu Zero-Fee Blockchain over JSON-RPC) ---
+  // --- 5. eGovChain (JSON-RPC over the configured ledger; simulated unless a contract address is set) ---
   async besuJsonRpc(method: string, params: any[] = []): Promise<any> {
     return request<any>('/egovchain/rpc', {
       method: 'POST',
@@ -312,13 +371,15 @@ export const api = {
     }, false, () => ({
       jsonrpc: "2.0",
       id: 1,
+      anchored: false,
+      simulated: true,
       result: {
         status: "0x1",
         transactionHash: "0xd8f2910c5d12a8f9104b2819c5b201f8",
         blockNumber: "0x1c37b1",
         gasUsed: "0x0",
-        chain_name: "eGovChain (Hyperledger Besu)",
-        consensus: "IBFT 2.0 Proof of Authority (Government Nodes)",
+        chain_name: "Simulated ledger (no chain submission)",
+        consensus: "none (simulated)",
       },
     }));
   },
@@ -330,16 +391,18 @@ export const api = {
     }, false, () => ({
       jsonrpc: "2.0",
       id: 1,
+      anchored: false,
+      simulated: true,
       result: {
         status: "0x1",
         transactionHash: `0x${hash.replace('0x', '')}`,
         blockHash: "0x7b2f91a08e4c19d205f3189a04b12c5e",
         blockNumber: "0x1c37b1",
-        from: "0x95222290DD7278Aa3Ddd389Cc1E1d165CC4BAfe5",
-        to: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
+        from: "0x0000000000000000000000000000000000000000",
+        to: null,
         gasUsed: "0x0",
-        chain_name: "eGovChain (Hyperledger Besu)",
-        consensus: "IBFT 2.0 Proof of Authority (Government Nodes)",
+        chain_name: "Simulated ledger (no chain submission)",
+        consensus: "none (simulated)",
       },
     }));
   },
@@ -581,18 +644,10 @@ export const api = {
       timestamp: new Date().toISOString(),
     }));
   },  // --- 9. Compass DBM Budget ---
+  // No fallback: the agency screens show "—" when the live budget feed is
+  // unavailable rather than a fabricated allocation figure.
   async getCompassBudget(programCode: string = 'DSWD-AICS'): Promise<any> {
-    return request<any>(`/compass/budget?program_code=${encodeURIComponent(programCode)}`, {}, false, () => ({
-      program_code: programCode,
-      fund_source: "GAA 2026 General Appropriations Act (DBM Transparency Portal)",
-      total_allocation: 7514252280701.64,
-      allotments: 5264033425281.64,
-      utilized_amount: 1523309434959.98,
-      remaining_balance: 3740723990321.66,
-      disbursements: 1211496810098.76,
-      compass_reference: "DBM-COMPASS-2026-LIVE-PORTAL",
-      status: "Active · Funds Available",
-    }));
+    return request<any>(`/compass/budget?program_code=${encodeURIComponent(programCode)}`);
   },
   async getCompassSaaodb(params: Record<string, any> = {}): Promise<any> {
     const qs = new URLSearchParams(params).toString();
@@ -749,58 +804,75 @@ export const api = {
    * citizen. No mock fallback on purpose: fabricating a successful SSO login
    * would silently authenticate someone as the wrong person.
    */
-  async exchangeEgovCode(exchangeCode: string): Promise<{ status: string; user: User; profile: any }> {
-    return request<{ status: string; user: User; profile: any }>('/auth/egov/exchange', {
+  async exchangeEgovCode(exchangeCode: string): Promise<{ status: string; token?: string; user: User; profile: any }> {
+    const res = await request<{ status: string; token?: string; user: User; profile: any }>('/auth/egov/exchange', {
       method: 'POST',
       body: JSON.stringify({ exchange_code: exchangeCode }),
     });
+    if (res.token) setAuthToken(res.token);
+    return res;
   },
 
   async getMe(): Promise<{ status: string; user: User }> {
-    return request<{ status: string; user: User }>('/me', {}, false, () => ({
-      status: "success",
-      user: {
-        id: 1,
-        sub: "MVPCBEUVCGPZR",
-        name: "JOSIE SANTOS DELA CRUZ",
-        email: "josie@yopmail.com",
-        role: "applicant",
-        verified_identity: true,
-      },
-    }));
+    return request<{ status: string; user: User }>('/me');
   },
 
-  async mockLogin(role: 'applicant' | 'hospital' | 'agency'): Promise<{ status: string; user: User }> {
-    return request<{ status: string; user: User }>('/auth/mock/login', {
+  async mockLogin(role: 'applicant' | 'hospital' | 'agency'): Promise<{ status: string; token?: string; user: User }> {
+    const res = await request<{ status: string; token?: string; user: User }>('/auth/mock/login', {
       method: 'POST',
       body: JSON.stringify({ role }),
-    }, false, () => ({
-      status: "success",
-      user: {
-        id: 1,
-        sub: role === 'applicant' ? 'MVPCBEUVCGPZR' : role === 'hospital' ? 'egov-sub-hospital-ana-002' : 'egov-sub-agency-miguel-003',
-        name: role === 'applicant' ? 'JOSIE SANTOS DELA CRUZ' : role === 'hospital' ? 'Dr. Ana Reyes' : 'Miguel dela Cruz',
-        email: role === 'applicant' ? 'josie@yopmail.com' : role === 'hospital' ? 'ana.reyes@manilageneral.ph' : 'miguel.delacruz@dswd.gov.ph',
-        role: role === 'applicant' ? 'applicant' : role === 'hospital' ? 'hospital_staff' : 'agency_evaluator',
-        verified_identity: true,
-      },
-    }));
+    });
+    if (res.token) setAuthToken(res.token);
+    return res;
   },
 
-  async verifyIdentity(consent: boolean): Promise<any> {
+  /**
+   * Restores the session on app start. An expired/revoked token is cleared and
+   * a demo applicant session is opened so the app is usable without a login wall.
+   */
+  async restoreSession(): Promise<{ status: string; token?: string; user: User } | null> {
+    if (!AUTH_TOKEN) return null;
+    try {
+      const res = await api.getMe();
+      return { status: res.status, user: res.user };
+    } catch (err) {
+      if (isApiError(err) && err.status === 401) {
+        setAuthToken(null);
+        return api.mockLogin('applicant').catch(() => null);
+      }
+      throw err;
+    }
+  },
+
+  /** Revokes the server-side token, then clears it locally. */
+  async logout(): Promise<{ status: string; message?: string }> {
+    try {
+      return await request<{ status: string; message?: string }>('/logout', { method: 'POST' });
+    } finally {
+      setAuthToken(null);
+    }
+  },
+
+  /**
+   * Public (non-secret) partner configuration: SSO partner code/host and the
+   * liveness SDK public key. Served from backend config so rotating a value is
+   * a one-place change instead of editing copied literals in the frontend.
+   */
+  async getPublicConfig(): Promise<{
+    sso: { partner_code: string | null; host: string | null };
+    liveness: { pubkey: string | null; sdk_src: string | null; origin: string | null };
+  }> {
+    return request('/egov/public-config');
+  },
+
+  async verifyIdentity(
+    consent: boolean,
+    demographics: { first_name?: string; middle_name?: string; last_name?: string; birth_date?: string } = {}
+  ): Promise<any> {
     return request<any>('/identity/verify', {
       method: 'POST',
-      body: JSON.stringify({ consent }),
-    }, false, () => ({
-      status: "success",
-      badge: "PhilSys eVerify Verified",
-      profile: {
-        full_name: "JOSIE SANTOS DELA CRUZ",
-        birth_date: "1990-01-01",
-        philsys_id: "PSN-8192-3049-1829",
-        status: "Verified",
-      },
-    }));
+      body: JSON.stringify({ consent, ...demographics }),
+    });
   },
 
   // Cases & Applications
@@ -826,136 +898,72 @@ export const api = {
     return request<{ status: string; case: MedicalCase }>(`/cases/${id}`);
   },
 
-  async uploadDocument(caseId: number, docType: string, title: string, file?: File): Promise<{ status: string; document: CaseDocument }> {
-    if (file) {
-      const formData = new FormData();
-      formData.append('document_type', docType);
-      formData.append('title', title);
-      formData.append('file', file);
-      try {
-        const res = await fetch(`${API_BASE}/cases/${caseId}/documents`, {
-          method: 'POST',
-          body: formData,
-        });
-        if (res.ok) return await res.json();
-      } catch (e) {
-        console.warn("File upload fallback to mock response", e);
-      }
+  /**
+   * Uploads a real file to the case. The backend requires a file
+   * (`required|file|mimes:pdf,jpg,jpeg,png|max:10240`), so there is no
+   * metadata-only path and no fabricated document on failure.
+   */
+  async uploadDocument(caseId: number, docType: string, title: string, file: File): Promise<{ status: string; message?: string; document: CaseDocument }> {
+    if (!file) {
+      throw new Error("A document file is required — select a PDF, JPG or PNG (max 10 MB) before uploading.");
     }
-    return request<{ status: string; document: CaseDocument }>(`/cases/${caseId}/documents`, {
-      method: 'POST',
-      body: JSON.stringify({ document_type: docType, title }),
-    }, false, () => ({
-      status: "success",
-      document: {
-        id: Date.now(),
-        medical_case_id: caseId,
-        document_type: docType,
-        title: title,
-        storage_path: `cases/${caseId}/${docType}.pdf`,
-        file_size: file ? file.size : 142000,
-        status: 'hashed',
-        sha256_hash: `DOC-HASH-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-        verification_reference: `HSH-DOC-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-        extracted_json: {
-          blockchain_tx_hash: `0x${Math.random().toString(16).substring(2)}${Math.random().toString(16).substring(2)}`.substring(0, 42),
-          blockchain_block_number: `0x${(1849200 + Math.floor(Math.random() * 100)).toString(16)}`,
-          blockchain_consensus: 'IBFT 2.0 Proof of Authority (Government Nodes)',
-          full_sha256: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`,
-          anchored_at: new Date().toISOString(),
-        }
-      }
-    }));
+
+    const formData = new FormData();
+    formData.append('document_type', docType);
+    formData.append('title', title);
+    formData.append('file', file);
+
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}/cases/${caseId}/documents`, {
+        method: 'POST',
+        headers: { Accept: 'application/json', ...authHeaders() },
+        body: formData,
+      });
+    } catch {
+      throw new Error(`Could not reach the GabayMed API at ${API_BASE}/cases/${caseId}/documents. Check that the backend is running.`);
+    }
+
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new ApiError(errorMessage(body, res.status), res.status, body);
+    }
+    return body;
   },
 
   async certifyDocument(docId: number): Promise<{ status: string; message: string; document: CaseDocument }> {
     return request<{ status: string; message: string; document: CaseDocument }>(`/documents/${docId}/certify`, {
       method: 'POST',
-    }, false, () => ({
-      status: "success",
-      message: "Document verified & certified successfully by hospital staff.",
-      document: {
-        id: docId,
-        medical_case_id: 1,
-        document_type: 'medical_record',
-        title: 'Verified Hospital Document',
-        storage_path: `cases/1/certified_doc.pdf`,
-        file_size: 152000,
-        status: 'certified',
-        sha256_hash: `HSP-CERT-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-        verification_reference: `HSP-REF-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-        extracted_json: {},
-      }
-    }));
+    });
   },
 
-  async uploadHospitalDocument(caseId: number, docType: string, title: string, file?: File, docReqId?: number): Promise<{ status: string; document: CaseDocument }> {
-    if (file) {
-      const formData = new FormData();
-      formData.append('document_type', docType);
-      formData.append('title', title);
-      formData.append('file', file);
-      if (docReqId) formData.append('doc_request_id', String(docReqId));
-      try {
-        const res = await fetch(`${API_BASE}/hospital/cases/${caseId}/documents`, {
-          method: 'POST',
-          body: formData,
-        });
-        if (res.ok) return await res.json();
-      } catch (e) {
-        console.warn("Hospital file upload fallback", e);
-      }
+  async uploadHospitalDocument(caseId: number, docType: string, title: string, file: File | undefined, docReqId?: number): Promise<{ status: string; message?: string; document: CaseDocument }> {
+    const formData = new FormData();
+    formData.append('document_type', docType);
+    formData.append('title', title);
+    if (file) formData.append('file', file);
+    if (docReqId) formData.append('doc_request_id', String(docReqId));
+
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}/hospital/cases/${caseId}/documents`, {
+        method: 'POST',
+        headers: { Accept: 'application/json', ...authHeaders() },
+        body: formData,
+      });
+    } catch {
+      throw new Error(`Could not reach the GabayMed API at ${API_BASE}/hospital/cases/${caseId}/documents. Check that the backend is running.`);
     }
-    return request<{ status: string; document: CaseDocument }>(`/hospital/cases/${caseId}/documents`, {
-      method: 'POST',
-      body: JSON.stringify({ document_type: docType, title, doc_request_id: docReqId }),
-    }, false, () => ({
-      status: "success",
-      document: {
-        id: Date.now(),
-        medical_case_id: caseId,
-        document_type: docType,
-        title: title,
-        storage_path: `hospital/cases/${caseId}/${docType}.pdf`,
-        file_size: file ? file.size : 256000,
-        status: 'certified',
-        sha256_hash: `HSP-HASH-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-        verification_reference: `HSP-REF-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-        extracted_json: {
-          blockchain_tx_hash: `0x${Math.random().toString(16).substring(2)}${Math.random().toString(16).substring(2)}`.substring(0, 42),
-          blockchain_block_number: `0x${(1849200 + Math.floor(Math.random() * 100)).toString(16)}`,
-          blockchain_consensus: 'IBFT 2.0 Proof of Authority (Government Nodes)',
-          certified_by: 'Dr. Ana Reyes (Manila General Hospital)',
-          anchored_at: new Date().toISOString(),
-        }
-      }
-    }));
+
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new ApiError(errorMessage(body, res.status), res.status, body);
+    }
+    return body;
   },
 
   async verifyDocumentBlockchain(docId: number): Promise<{ status: string; document: any; blockchain: any }> {
-    return request<{ status: string; document: any; blockchain: any }>(`/documents/${docId}/verify-blockchain`, {}, false, () => ({
-      status: "success",
-      document: {
-        id: docId,
-        title: "Official Medical Record / Applicant File",
-        document_type: "statement_of_account",
-        status: "certified",
-        sha256_hash: "DOC-HASH-99A1F2C84B",
-        full_sha256: "8f431c92a10b428d0987f65e2310ab45981273645bc890123ef890123456789a",
-        verification_reference: "VER-DOC-88A1901B",
-        created_at: new Date().toISOString()
-      },
-      blockchain: {
-        network: "Hyperledger Besu Zero-Fee eGovChain",
-        consensus: "IBFT 2.0 Proof of Authority (Government Nodes)",
-        contract_address: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
-        transaction_hash: "0x98f2190c5d12a8f9104b2819c5b201f8a920b41c",
-        block_number: "0x1c37b1",
-        gas_used: "0x0 (Zero Fee)",
-        verification_status: "TAMPER_EVIDENT_VALID",
-        ledger_result: { verified: true, state: "ANCHORED_AND_VALIDATED" }
-      }
-    }));
+    return request<{ status: string; document: any; blockchain: any }>(`/documents/${docId}/verify-blockchain`, {});
   },
 
   async requestHospitalDocuments(caseId: number): Promise<{ status: string; request: HospitalRequest }> {
@@ -972,13 +980,18 @@ export const api = {
     return request<{ status: string; programs: AgencyProgram[] }>('/agency-programs');
   },
 
-  async submitAgencyApplication(caseId: number, agencyProgramId: number, requestedAmount: number): Promise<{ status: string; application: AgencyApplication }> {
-    return request<{ status: string; application: AgencyApplication }>(`/cases/${caseId}/agency-applications`, {
+  async submitAgencyApplication(
+    caseId: number,
+    agencyProgramId: number,
+    requestedAmount: number,
+    consentSharing: boolean = true
+  ): Promise<{ status: string; message?: string; application: AgencyApplication }> {
+    return request<{ status: string; message?: string; application: AgencyApplication }>(`/cases/${caseId}/agency-applications`, {
       method: 'POST',
       body: JSON.stringify({
         agency_program_id: agencyProgramId,
         requested_amount: requestedAmount,
-        consent_sharing: true,
+        consent_sharing: consentSharing,
       }),
     });
   },
@@ -988,8 +1001,27 @@ export const api = {
     return request<{ status: string; requests: HospitalRequest[] }>('/hospital/requests');
   },
 
-  async submitHospitalDocuments(reqId: number): Promise<{ status: string; documents: CaseDocument[] }> {
-    return request<{ status: string; documents: CaseDocument[] }>(`/hospital/requests/${reqId}/documents`, {
+  /** Full request detail: case documents plus the AI extraction summary. */
+  async getHospitalRequest(
+    requestId: number
+  ): Promise<{ status: string; request: HospitalRequest; ai_extraction?: any }> {
+    return request<{ status: string; request: HospitalRequest; ai_extraction?: any }>(`/hospital/requests/${requestId}`);
+  },
+
+  async submitHospitalDocuments(reqId: number): Promise<{
+    status: string;
+    message?: string;
+    documents: CaseDocument[];
+    missing?: string[];
+    case_status?: string;
+  }> {
+    return request<{
+      status: string;
+      message?: string;
+      documents: CaseDocument[];
+      missing?: string[];
+      case_status?: string;
+    }>(`/hospital/requests/${reqId}/documents`, {
       method: 'POST',
     });
   },
@@ -1001,8 +1033,28 @@ export const api = {
     });
   },
 
-  async recordUtilization(guaranteeId: number, amount: number, billingRef: string): Promise<{ status: string; guarantee_status: string }> {
-    return request<{ status: string; guarantee_status: string }>(`/guarantees/${guaranteeId}/utilizations`, {
+  async recordUtilization(
+    guaranteeId: number,
+    amount: number,
+    billingRef: string
+  ): Promise<{
+    status: string;
+    message?: string;
+    utilization?: any;
+    guarantee?: { approved_amount: number; utilized_amount: number; remaining_value: number };
+    settlement?: any;
+    guarantee_status: string;
+    case_status?: string;
+  }> {
+    return request<{
+      status: string;
+      message?: string;
+      utilization?: any;
+      guarantee?: { approved_amount: number; utilized_amount: number; remaining_value: number };
+      settlement?: any;
+      guarantee_status: string;
+      case_status?: string;
+    }>(`/guarantees/${guaranteeId}/utilizations`, {
       method: 'POST',
       body: JSON.stringify({
         utilized_amount: amount,
@@ -1020,8 +1072,33 @@ export const api = {
     return request<{ status: string; application: any }>(`/agency/applications/${appId}`);
   },
 
-  async submitDecision(appId: number, action: string, approvedAmount: number, reason: string): Promise<{ status: string; guarantee_letter?: GuaranteeLetter }> {
-    return request<{ status: string; guarantee_letter?: GuaranteeLetter }>(`/agency/applications/${appId}/decision`, {
+  /**
+   * Records an agency decision. The backend returns the issued
+   * `guarantee_letter` and, when the applicant has a mobile number, the real
+   * `sms` dispatch receipt `{number, message, status}` — the frontend no longer
+   * sends an SMS of its own.
+   */
+  async submitDecision(
+    appId: number,
+    action: string,
+    approvedAmount: number,
+    reason: string
+  ): Promise<{
+    status: string;
+    message?: string;
+    application?: any;
+    guarantee_letter?: GuaranteeLetter;
+    sms?: { number: string; message: string; status: string | null } | null;
+    max_approvable?: number;
+  }> {
+    return request<{
+      status: string;
+      message?: string;
+      application?: any;
+      guarantee_letter?: GuaranteeLetter;
+      sms?: { number: string; message: string; status: string | null } | null;
+      max_approvable?: number;
+    }>(`/agency/applications/${appId}/decision`, {
       method: 'POST',
       body: JSON.stringify({
         action,
@@ -1039,5 +1116,49 @@ export const api = {
   // Notifications
   async getNotifications(): Promise<{ status: string; notifications: NotificationItem[]; unread_count: number }> {
     return request<{ status: string; notifications: NotificationItem[]; unread_count: number }>('/notifications');
+  },
+
+  async markNotificationRead(id: number): Promise<{ status: string; message?: string }> {
+    return request<{ status: string; message?: string }>(`/notifications/${id}/read`, {
+      method: 'PATCH',
+    });
+  },
+
+  /**
+   * The case's audit timeline. The backend serves GET /cases/{case}/timeline.
+   */
+  async getCaseTimeline(caseId: number): Promise<{ status: string; timeline: AuditEvent[] }> {
+    return request<{ status: string; timeline: AuditEvent[] }>(`/cases/${caseId}/timeline`);
+  },
+
+  /**
+   * Recomputes the case's audit hash chain server-side.
+   *
+   * GET /cases/{case}/timeline/verify answers HTTP 409 when the chain is
+   * broken, so the 409 payload is returned rather than thrown — the caller
+   * decides what to display. Never claim tamper-evidence without this result.
+   */
+  async verifyCaseTimeline(caseId: number): Promise<{
+    status: string;
+    case_id?: number;
+    case_number?: string;
+    verification: {
+      verified: boolean;
+      checked?: number;
+      head_hash?: string;
+      broken_at_event_id?: number | null;
+      broken_action?: string;
+      unverifiable_event_ids?: number[];
+      ledger_simulated?: boolean;
+    };
+  }> {
+    try {
+      return await request(`/cases/${caseId}/timeline/verify`);
+    } catch (err) {
+      if (isApiError(err) && err.status === 409 && err.payload?.verification) {
+        return err.payload;
+      }
+      throw err;
+    }
   },
 };

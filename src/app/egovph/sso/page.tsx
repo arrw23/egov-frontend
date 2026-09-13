@@ -6,8 +6,12 @@ import { BadgeCheck, CheckCircle2, ShieldCheck, Loader2, ArrowRight, LockKeyhole
 import { Brand } from "@/components/common/Brand";
 import { api } from "@/lib/api";
 
-const PARTNER_CODE = "3b597185a139440d8e6d56bc45330ee8";
-const SSO_HOST = "https://platforms-api.e.gov.ph/egov-sso";
+/**
+ * Public eGov SSO settings come from GET /api/v1/egov/public-config (they are
+ * public by design — the login widget needs the partner code), so rotating them
+ * is a backend config change rather than an edit to copied frontend literals.
+ */
+const DEFAULT_SSO_HOST = "https://platforms-api.e.gov.ph/egov-sso";
 
 const SANDBOX_CITIZENS = [
   { mobile: "+639090000001", name: "JOSE CRUZ DELA PEÑA III", otp: "123456", pin: "000000" },
@@ -41,7 +45,28 @@ function SSOContent() {
   // Manual fallback inputs
   const [manualExchangeCode, setManualExchangeCode] = useState("CYsS3rqHXM8QRBsO0444lXAUlcp1jeU4");
 
+  // Public SSO host/partner code, fetched from the backend's public config
+  const [ssoConfig, setSsoConfig] = useState<{ partnerCode: string; host: string }>({
+    partnerCode: "",
+    host: DEFAULT_SSO_HOST,
+  });
+
   const widgetRenderedRef = useRef(false);
+
+  useEffect(() => {
+    api
+      .getPublicConfig()
+      .then((cfg) =>
+        setSsoConfig({
+          partnerCode: cfg?.sso?.partner_code || "",
+          host: cfg?.sso?.host || DEFAULT_SSO_HOST,
+        })
+      )
+      .catch(() => {
+        // Keep the documented default host; the widget simply will not render
+        // without a partner code from the backend.
+      });
+  }, []);
 
   // Core SSO Redeemer: one call to POST /api/v1/auth/egov/exchange, which
   // exchanges the code, resolves the real citizen profile server-side, upserts
@@ -106,15 +131,15 @@ function SSOContent() {
 
   // Mount Official eGovLogin Widget when on widget step
   useEffect(() => {
-    if (step === "widget" && !widgetRenderedRef.current) {
+    if (step === "widget" && !widgetRenderedRef.current && ssoConfig.partnerCode) {
       const renderWidget = () => {
         const win = window as any;
         if (win.EgovLogin && document.getElementById("egov-login-target")) {
           try {
             win.EgovLogin.render({
               target: "#egov-login-target",
-              partnerCode: PARTNER_CODE,
-              host: SSO_HOST,
+              partnerCode: ssoConfig.partnerCode,
+              host: ssoConfig.host,
               partnerName: "GabayMed",
               onSuccess: ({ exchangeCode: receivedCode }: { exchangeCode: string }) => {
                 if (receivedCode) {
@@ -135,7 +160,7 @@ function SSOContent() {
       const timer = setTimeout(renderWidget, 400);
       return () => clearTimeout(timer);
     }
-  }, [step]);
+  }, [step, ssoConfig]);
 
   // Handle Manual Fallback Form Submission
   const handleManualAuthenticate = async (e: React.FormEvent) => {
@@ -163,7 +188,7 @@ function SSOContent() {
               {verifyingTitle}
             </h2>
             <p style={{ color: "#4338ca", fontSize: "0.88rem", fontWeight: 600, maxWidth: 460, margin: "0 auto 1rem auto" }}>
-              Authenticating via official eGov SSO gateway (<code>{SSO_HOST}</code>). Redeeming single-use authorization code and resolving citizen profile.
+              Authenticating via the official eGov SSO gateway (<code>{ssoConfig.host}</code>). Redeeming single-use authorization code and resolving citizen profile.
             </p>
             {statusDetail && (
               <div style={{ background: "#f5f3ff", padding: "0.5rem 0.8rem", borderRadius: 12, border: "1px solid #1e1b4b", display: "inline-block", fontSize: "0.78rem", fontFamily: "monospace", color: "#312e81" }}>
@@ -313,7 +338,9 @@ function SSOContent() {
               </div>
 
               <div style={{ background: "#f5f3ff", padding: "0.75rem 1rem", borderRadius: 14, border: "1.5px solid #1e1b4b", fontSize: "0.78rem", color: "#4338ca", fontWeight: 700 }}>
-                💡 Partner credentials (<code>partner_code: {PARTNER_CODE.substring(0, 8)}...</code>) and secret are securely maintained by the backend server.
+                💡 Partner credentials (
+                <code>partner_code: {ssoConfig.partnerCode ? `${ssoConfig.partnerCode.substring(0, 8)}...` : "served by the backend"}</code>) and
+                secret are securely maintained by the backend server.
               </div>
 
               <button className="primary wide" type="submit" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.6rem", padding: "0.85rem 1.25rem", fontSize: "0.95rem", marginTop: "0.5rem" }}>

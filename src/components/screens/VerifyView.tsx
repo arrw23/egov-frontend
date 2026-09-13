@@ -13,27 +13,35 @@ type VerifiedResult = {
   tier: string;
   reference: string;
   token: string;
-  confidence: string;
+  pcn: string;
   capture: LivenessCapture;
   method: "face" | "qr";
 };
 
 const VERIFYING_MS = 1100;
 const VERIFIED_POP_MS = 1800;
-const DEMO_PCN = "9639954762664080";
-
-const DEMO_RESULT = {
-  grade: "Grade 1",
-  tier: "Tier II",
-  reference: "EVR-30134906",
-  token: "26825997516254953092",
-  confidence: "98.71%",
-};
-
-const formatPcn = (pcn: string) => (/^\d{16}$/.test(pcn) ? pcn : DEMO_PCN).replace(/(\d{4})(?=\d)/g, "$1-");
 
 const asRecord = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown, fallback: string) => (typeof v === "string" && v ? v : typeof v === "number" ? String(v) : fallback);
+
+/** The citizen record returned by the backend's /me endpoint. */
+type SessionCitizen = {
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  birthDate: string;
+  fullName: string;
+  pcn: string;
+};
+
+const EMPTY_CITIZEN: SessionCitizen = {
+  firstName: "",
+  middleName: "",
+  lastName: "",
+  birthDate: "",
+  fullName: "",
+  pcn: "",
+};
 
 export function VerifyView({
   verified,
@@ -48,39 +56,47 @@ export function VerifyView({
   const [phase, setPhase] = useState<Phase>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [result, setResult] = useState<VerifiedResult | null>(null);
+  const [citizenInfo, setCitizenInfo] = useState<SessionCitizen>(EMPTY_CITIZEN);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
   const timersRef = useRef<number[]>([]);
 
-  // Citizen demographics from the eGov SSO session (falls back to the demo citizen)
-  const [citizenInfo, setCitizenInfo] = useState({
-    firstName: "JOSIE",
-    middleName: "SANTOS",
-    lastName: "DELA CRUZ",
-    suffix: "",
-    birthDate: "1990-01-01",
-    fullName: "JOSIE SANTOS DELA CRUZ",
-    pcn: DEMO_PCN,
-  });
-
+  // The citizen identity comes from the backend session — never from
+  // localStorage with a hard-coded demo default.
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem("egov_user_info");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed.name) {
-          const parts = parsed.name.trim().split(" ");
-          setCitizenInfo({
-            firstName: parts[0] || "JOSIE",
-            middleName: parts.length > 2 ? parts[1] : "",
-            lastName: parts.length > 1 ? parts[parts.length - 1] : "DELA CRUZ",
-            suffix: parsed.suffix || "",
-            birthDate: parsed.birthdate || "1990-01-01",
-            fullName: parsed.name,
-            pcn: parsed.pcn || DEMO_PCN,
-          });
+    let cancelled = false;
+    setProfileLoading(true);
+    api
+      .getMe()
+      .then((res) => {
+        if (cancelled) return;
+        const profile = (res.user?.applicant_profile || {}) as any;
+        const name = profile.full_name || res.user?.name || "";
+        if (!name) {
+          setProfileError("The signed-in session did not return a name. Sign in with eGovPH SSO before verifying.");
+          return;
         }
-      }
-    } catch (e) {}
+        const parts = name.trim().split(/\s+/);
+        setCitizenInfo({
+          firstName: profile.first_name || parts[0] || "",
+          middleName: profile.middle_name || (parts.length > 2 ? parts.slice(1, -1).join(" ") : ""),
+          lastName: profile.last_name || (parts.length > 1 ? parts[parts.length - 1] : ""),
+          birthDate: profile.birth_date ? String(profile.birth_date).slice(0, 10) : "",
+          fullName: name,
+          pcn: profile.philsys_id || "",
+        });
+        setProfileError("");
+      })
+      .catch((err: any) => {
+        if (!cancelled) setProfileError(err?.message || "The signed-in profile could not be loaded.");
+      })
+      .finally(() => {
+        if (!cancelled) setProfileLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => () => timersRef.current.forEach((t) => window.clearTimeout(t)), []);
@@ -90,41 +106,28 @@ export function VerifyView({
     setPhase("idle");
   };
 
-  // PhilSys eVerify with the liveness session id; returns the citizen record for the verified card
+  /**
+   * PhilSys eVerify via the backend. The backend requires consent and returns
+   * 422 when eVerify does not return a verified match, so failures are shown
+   * as-is rather than replaced by a fabricated "verified" result.
+   */
   const runEVerify = async (capture: LivenessCapture, qrValue?: string) => {
-    try {
+    if (qrValue) {
       const auth = await api.eVerifyAuth();
       const token = auth?.data?.access_token || "";
-      const res = qrValue
-        ? await api.eVerifyQrVerify(qrValue, capture.sessionId, token)
-        : await api.eVerifyQuery(
-            {
-              first_name: citizenInfo.firstName,
-              middle_name: citizenInfo.middleName || undefined,
-              last_name: citizenInfo.lastName,
-              suffix: citizenInfo.suffix || undefined,
-              birth_date: citizenInfo.birthDate,
-              face_liveness_session_id: capture.sessionId,
-            },
-            token
-          );
-      const body = asRecord(res?.data ?? res);
-      const person = asRecord(body.data ?? body);
-      const meta = asRecord(body.meta ?? res?.meta);
-      return {
-        fullName: str(person.full_name, citizenInfo.fullName),
-        grade: meta.result_grade !== undefined ? `Grade ${str(meta.result_grade, "1")}` : DEMO_RESULT.grade,
-        tier: str(meta.tier_level, DEMO_RESULT.tier),
-        reference: str(person.reference, DEMO_RESULT.reference),
-        token: str(person.token, DEMO_RESULT.token),
-      };
-    } catch {
-      return { fullName: citizenInfo.fullName, ...DEMO_RESULT };
+      return api.eVerifyQrVerify(qrValue, capture.sessionId, token);
     }
+    return api.verifyIdentity(true, {
+      first_name: citizenInfo.firstName || undefined,
+      middle_name: citizenInfo.middleName || undefined,
+      last_name: citizenInfo.lastName || undefined,
+      birth_date: citizenInfo.birthDate || undefined,
+    });
   };
 
   // 1) Official eGov Face Liveness camera -> 2) PhilSys eVerify -> verified card
   const runVerification = async (qrValue?: string) => {
+    if (!consent) return fail("Consent to PhilSys identity authentication is required to continue.");
     setErrorMsg("");
     setPhase("liveness");
     const liveness = await runFaceLiveness();
@@ -133,22 +136,43 @@ export function VerifyView({
 
     setPhase("verifying");
     const capture = liveness.capture;
-    api.verifyIdentity(true).catch(() => {});
-    const [record] = await Promise.all([runEVerify(capture, qrValue), new Promise((r) => timersRef.current.push(window.setTimeout(r, VERIFYING_MS)))]);
 
-    setResult({ ...record, confidence: DEMO_RESULT.confidence, capture, method: qrValue ? "qr" : "face" });
-    setPhase("verified_pop");
-    timersRef.current.push(
-      window.setTimeout(() => {
-        setPhase("idle");
-        onVerify();
-      }, VERIFIED_POP_MS)
-    );
+    try {
+      const [res] = await Promise.all([
+        runEVerify(capture, qrValue),
+        new Promise((r) => timersRef.current.push(window.setTimeout(r, VERIFYING_MS))),
+      ]);
+
+      const profile = asRecord((res as any)?.profile ?? res);
+      const verifiedName = str(profile.full_name, citizenInfo.fullName);
+
+      setResult({
+        fullName: verifiedName,
+        grade: str(profile.match_result ?? (res as any)?.match_result, "Match confirmed"),
+        tier: str(profile.tier ?? (res as any)?.tier, ""),
+        reference: str(profile.verification_reference, "—"),
+        token: str(profile.reference ?? profile.token, "—"),
+        pcn: str(profile.philsys_id, citizenInfo.pcn || "—"),
+        capture,
+        method: qrValue ? "qr" : "face",
+      });
+      setPhase("verified_pop");
+      timersRef.current.push(
+        window.setTimeout(() => {
+          setPhase("idle");
+          onVerify();
+        }, VERIFIED_POP_MS)
+      );
+    } catch (err: any) {
+      // Surface the real backend error (422 con-consent/verify mismatch, 401, network, ...)
+      fail(err?.message || "PhilSys eVerify could not verify this identity. No verification result was produced.");
+    }
   };
 
   // National ID QR: decode the uploaded QR photo, then the same face liveness check
   const handleQrFile = async (file: File | undefined) => {
     if (!file) return;
+    if (!consent) return fail("Consent to PhilSys identity authentication is required to continue.");
     setErrorMsg("");
     setPhase("decoding_qr");
     const value = file.type.startsWith("image/") ? await decodeQrImage(file) : null;
@@ -157,9 +181,9 @@ export function VerifyView({
   };
 
   const busy = phase !== "idle";
-  const pcn = formatPcn(citizenInfo.pcn);
+  const pcn = result?.pcn || citizenInfo.pcn || "—";
   const selfie = captureImageSrc(result?.capture);
-  const verifiedName = result?.fullName || citizenInfo.fullName;
+  const verifiedName = result?.fullName || citizenInfo.fullName || "Signed-in citizen";
 
   return (
     <div style={{ maxWidth: 580, width: "100%", margin: "1.5rem auto", padding: "1.5rem", background: "white", borderRadius: 28, border: "2.5px solid #1e1b4b", boxShadow: "0 8px 0 #1e1b4b", boxSizing: "border-box" }}>
@@ -177,12 +201,26 @@ export function VerifyView({
             Tier 1 & Tier 2 identity authentication using Demographics and Biometric Face Liveness check against the central PhilSys registry.
           </p>
 
+          {profileError && (
+            <div role="alert" style={{ background: "#fef2f2", border: "2px solid #ef4444", borderRadius: 14, padding: "0.75rem 1rem", margin: "1rem 0", color: "#991b1b", fontSize: "0.82rem", fontWeight: 800, display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
+              <AlertTriangle size={18} color="#dc2626" style={{ flexShrink: 0, marginTop: 1 }} /> <span>{profileError}</span>
+            </div>
+          )}
+
           <div style={{ background: "#f5f3ff", padding: "1.25rem", borderRadius: 20, border: "2px solid #1e1b4b", margin: "1.25rem 0", display: "flex", flexDirection: "column", gap: "0.6rem", fontSize: "0.88rem", fontWeight: 700 }}>
             <b style={{ color: "#1e1b4b" }}>Demographics to be verified:</b>
-            <span><Check size={16} color="#059669" /> Full Name: <b>{citizenInfo.fullName}</b></span>
-            <span><Check size={16} color="#059669" /> Date of Birth: <b>{citizenInfo.birthDate}</b></span>
-            <span><Check size={16} color="#059669" /> PhilSys Card Number (PCN): <b>{pcn}</b></span>
-            <span><Camera size={16} color="#2563eb" /> Biometrics: <b>Official eGov Face Liveness Web SDK</b></span>
+            {profileLoading ? (
+              <span style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+                <RefreshCw size={16} className="animate-spin" /> Loading your signed-in profile...
+              </span>
+            ) : (
+              <>
+                <span><Check size={16} color="#059669" /> Full Name: <b>{citizenInfo.fullName || "—"}</b></span>
+                <span><Check size={16} color="#059669" /> Date of Birth: <b>{citizenInfo.birthDate || "—"}</b></span>
+                <span><Check size={16} color="#059669" /> PhilSys Card Number (PCN): <b>{citizenInfo.pcn || "—"}</b></span>
+                <span><Camera size={16} color="#2563eb" /> Biometrics: <b>Official eGov Face Liveness Web SDK</b></span>
+              </>
+            )}
           </div>
 
           <label style={{ display: "flex", gap: "0.75rem", alignItems: "center", marginBottom: "1.5rem", fontSize: "0.88rem", fontWeight: 700, cursor: "pointer" }}>
@@ -203,7 +241,7 @@ export function VerifyView({
 
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
             <button
-              disabled={!consent || busy}
+              disabled={!consent || busy || profileLoading}
               className="primary wide"
               onClick={() => runVerification()}
               style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.6rem", padding: "0.85rem" }}
@@ -224,7 +262,7 @@ export function VerifyView({
             </button>
 
             <button
-              disabled={!consent || busy}
+              disabled={!consent || busy || profileLoading}
               className="outline wide"
               onClick={() => fileRef.current?.click()}
               style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.6rem", padding: "0.8rem" }}
@@ -261,11 +299,11 @@ export function VerifyView({
             </div>
           )}
           <div style={{ background: "#dcfce7", color: "#14532d", padding: "0.35rem 1rem", borderRadius: "9999px", border: "1.5px solid #1e1b4b", fontWeight: 900, fontSize: "0.8rem", display: "inline-block", marginBottom: "0.5rem" }}>
-            IDENTITY VERIFIED{result?.tier ? ` (${result.tier.toUpperCase()})` : ""} 👋
+            IDENTITY VERIFIED{result?.tier ? ` (${result.tier.toUpperCase()})` : ""}
           </div>
           <h1 style={{ fontSize: "1.75rem", fontWeight: 900, margin: "0.25rem 0", color: "#1e1b4b" }}>Welcome, {verifiedName}</h1>
           <p style={{ color: "#4338ca", fontSize: "0.92rem", fontWeight: 600, marginBottom: "1.25rem" }}>
-            Your identity has been authenticated against PhilSys NIDAS eVerify records.
+            The backend confirmed this identity against PhilSys NIDAS eVerify.
           </p>
 
           <div style={{ background: "#f5f3ff", padding: "1.25rem", borderRadius: 20, border: "2px solid #1e1b4b", textAlign: "left", marginBottom: "1rem", fontSize: "0.88rem", fontWeight: 700, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -273,28 +311,34 @@ export function VerifyView({
               <span>PhilSys Card Number (PCN):</span> <b>{pcn}</b>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap" }}>
-              <span>Match Result:</span> <b style={{ color: "#059669" }}>{result?.grade || DEMO_RESULT.grade}</b>
+              <span>Match Result:</span> <b style={{ color: "#059669" }}>{result?.grade || "—"}</b>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap" }}>
-              <span>Verified Citizen:</span> <span style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}><b>{verifiedName}</b> <BadgeCheck size={18} color="#2563eb" /></span>
+              <span>Verified Citizen:</span>{" "}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+                <b>{verifiedName}</b> <BadgeCheck size={18} color="#2563eb" />
+              </span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap" }}>
-              <span>Verification Reference:</span> <b>{result?.reference || DEMO_RESULT.reference}</b>
+              <span>Verification Reference:</span> <b>{result?.reference || "—"}</b>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
-              <span>NIDAS Token:</span> <code style={{ wordBreak: "break-all" }}>{result?.token || DEMO_RESULT.token}</code>
-            </div>
+            {result?.token && result.token !== "—" && (
+              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+                <span>NIDAS Token:</span> <code style={{ wordBreak: "break-all" }}>{result.token}</code>
+              </div>
+            )}
             <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap" }}>
-              <span>Verified Via:</span> <b style={{ color: "#059669" }}>{result?.method === "qr" ? "National ID QR + Face Liveness" : "Demographics + Face Liveness"}</b>
+              <span>Verified Via:</span>{" "}
+              <b style={{ color: "#059669" }}>{result?.method === "qr" ? "National ID QR + Face Liveness" : "Demographics + Face Liveness"}</b>
             </div>
           </div>
 
           <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", justifyContent: "center", marginBottom: "1.5rem" }}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", background: "#e0e7ff", color: "#1e1b4b", padding: "0.4rem 0.85rem", borderRadius: "9999px", border: "1.5px solid #1e1b4b", fontSize: "0.8rem", fontWeight: 900 }}>
-              <Camera size={16} /> Face Liveness SDK · Confidence {result?.confidence || DEMO_RESULT.confidence}
+              <Camera size={16} /> Face Liveness SDK capture
             </span>
             <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", background: "#dcfce7", color: "#14532d", padding: "0.4rem 0.85rem", borderRadius: "9999px", border: "1.5px solid #166534", fontSize: "0.8rem", fontWeight: 900 }}>
-              <ShieldCheck size={16} /> Anti-Spoofing: Passed
+              <ShieldCheck size={16} /> PhilSys eVerify match confirmed
             </span>
           </div>
 
@@ -321,9 +365,8 @@ export function VerifyView({
                 </div>
                 <h2 className="verifiedPop" style={{ fontSize: "2.2rem", fontWeight: 900, color: "#1e1b4b", margin: 0 }}>Verified!</h2>
                 <p style={{ color: "#059669", fontSize: "0.9rem", fontWeight: 800, margin: "0.4rem 0 0.2rem 0" }}>
-                  Face liveness passed · PhilSys eVerify {result?.grade || DEMO_RESULT.grade}
+                  Face liveness passed · PhilSys eVerify {result?.grade || "match confirmed"}
                 </p>
-                <small style={{ color: "#4338ca", fontWeight: 700 }}>PhilSys NIDAS eVerify · {result?.tier || DEMO_RESULT.tier}</small>
               </>
             )}
           </div>

@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { api } from "@/lib/api";
-import { MedicalCase, Role, Screen } from "@/types";
+import { Role, Screen, Selection } from "@/types";
 import { MobileDrawer, MobileNav, Nav, Top } from "@/components/layout/Navbar";
 import { LoginView } from "@/components/screens/LoginView";
 import { VerifyView } from "@/components/screens/VerifyView";
@@ -19,52 +19,71 @@ import { RequirementBuilderView } from "@/components/screens/RequirementBuilderV
 import { AuditLogsView } from "@/components/screens/AuditLogsView";
 import { ChatbotWidget } from "@/components/screens/ChatbotWidget";
 
-const DEMO_APPLICANT_NAME = "JOSIE SANTOS DELA CRUZ";
-const DEMO_APPLICANT_MOBILE = "+639090000000";
-
-// The signed-in citizen is whoever eGovPH SSO returned; the backend's seeded applicant is not shown
-const readSignedInProfile = () => {
-  try {
-    const stored = localStorage.getItem("egov_user_info");
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      return {
-        name: parsed.name ? String(parsed.name) : DEMO_APPLICANT_NAME,
-        mobile: parsed.mobile ? String(parsed.mobile) : DEMO_APPLICANT_MOBILE,
-      };
-    }
-  } catch { }
-  return { name: DEMO_APPLICANT_NAME, mobile: DEMO_APPLICANT_MOBILE };
-};
-
 export default function Home() {
   const [role, setRole] = useState<Role>("applicant");
   const [screen, setScreen] = useState<Screen>("login");
   const [verified, setVerified] = useState(false);
-  const [approved, setApproved] = useState(true);
-  const [used, setUsed] = useState(0);
   const [toast, setToast] = useState("");
-  const [activeCase, setActiveCase] = useState<MedicalCase | null>(null);
-  const [applicantName, setApplicantName] = useState(DEMO_APPLICANT_NAME);
-  const [applicantMobile, setApplicantMobile] = useState(DEMO_APPLICANT_MOBILE);
-
-  const loadSignedInProfile = () => {
-    const profile = readSignedInProfile();
-    setApplicantName(profile.name);
-    setApplicantMobile(profile.mobile);
-  };
+  /**
+   * Which case / agency application / hospital request / guarantee letter the
+   * signed-in user is currently working on. Screens read and extend this
+   * instead of hard-coding id 1.
+   */
+  const [selection, setSelection] = useState<Selection>({});
+  const [applicantName, setApplicantName] = useState("");
+  const [applicantMobile, setApplicantMobile] = useState("");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const roleSyncRef = useRef<Promise<unknown>>(Promise.resolve());
   const toastTimerRef = useRef<number | null>(null);
 
+  /** Merges new selection ids; passing `undefined` clears that one. */
+  const select = useCallback((patch: Partial<Selection>) => {
+    setSelection((prev) => {
+      const next: Selection = { ...prev };
+      (Object.keys(patch) as (keyof Selection)[]).forEach((key) => {
+        const value = patch[key];
+        if (value === undefined) delete next[key];
+        else next[key] = value as never;
+      });
+      return next;
+    });
+  }, []);
+
+  // The signed-in citizen comes from the backend session, not from localStorage
+  // with a hard-coded default.
+  const loadSignedInProfile = useCallback(async () => {
+    try {
+      const res = await api.getMe();
+      const user = res?.user;
+      if (user) {
+        if (user.name) setApplicantName(user.name);
+        if (user.mobile) setApplicantMobile(user.mobile);
+      }
+    } catch {
+      // Leave the name empty rather than inventing a citizen; screens show their own errors.
+    }
+  }, []);
+
+  // Any case the applicant's account already owns becomes the working case, so
+  // the id travels with the session instead of defaulting to 1.
+  const loadApplicantCases = useCallback(async () => {
+    try {
+      const res = await api.getCases();
+      if (res.cases && res.cases.length > 0) {
+        setSelection((prev) => (prev.caseId ? prev : { ...prev, caseId: res.cases[0].id }));
+      }
+    } catch {
+      // Dashboard/upload screens render their own "select a case" empty state.
+    }
+  }, []);
+
   useEffect(() => {
-    api.getCases()
-      .then((res) => {
-        if (res.cases && res.cases.length > 0) {
-          setActiveCase(res.cases[0]);
-        }
-      })
-      .catch(() => { });
+    // Every route is behind Sanctum, so restore (or open) a session before any
+    // screen fires its own requests.
+    api
+      .restoreSession()
+      .then(() => Promise.all([loadSignedInProfile(), loadApplicantCases()]))
+      .catch(() => undefined);
 
     if (typeof window !== "undefined" && window.location.search.includes("sso=authenticated")) {
       // Drop the SSO query params so a refresh doesn't replay the sign-in
@@ -72,14 +91,20 @@ export default function Home() {
 
       // SSO only authenticates; PhilSys eVerify + face liveness still has to run before the case page
       const toVerify = () => {
-        loadSignedInProfile();
         setRole("applicant");
         setVerified(false);
         setScreen("verify");
       };
-      api.mockLogin("applicant").then(toVerify).catch(toVerify);
+      api
+        .mockLogin("applicant")
+        .catch(() => undefined)
+        .then(async () => {
+          await loadSignedInProfile();
+          await loadApplicantCases();
+        })
+        .finally(toVerify);
     }
-  }, []);
+  }, [loadSignedInProfile, loadApplicantCases]);
 
   const go = (s: Screen, r = role) => {
     setRole(r);
@@ -98,13 +123,27 @@ export default function Home() {
 
   const backendRole = (r: Role) => (r === "applicant" ? "applicant" : r === "hospital_staff" ? "hospital" : "agency");
 
-  // Sidebar role switcher used between demo-script segments; keeps verification, GL and utilization state.
+  // Sidebar role switcher used between demo-script segments; keeps verification and selection state.
   // Navigate immediately and sync the backend session in the background (queued so rapid switches land in
   // order); awaiting it first let a slow/offline backend yank the view away after the user had moved on.
   const switchRole = (r: Role) => {
     if (r === role) return;
+    // Each role has its own scoped routes, so the Sanctum token must be swapped too.
     roleSyncRef.current = roleSyncRef.current.then(() => api.mockLogin(backendRole(r)).catch(() => undefined));
     go(r === "applicant" ? (verified ? "dashboard" : "verify") : r === "hospital_staff" ? "hospital" : "agency", r);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await api.logout();
+    } catch {
+      // The local token is cleared inside logout() regardless.
+    }
+    setApplicantName("");
+    setApplicantMobile("");
+    setSelection({});
+    setVerified(false);
+    go("login");
   };
 
   if (screen === "login")
@@ -114,8 +153,9 @@ export default function Home() {
           try {
             await api.mockLogin(backendRole(r));
           } catch (e) { }
-          // Agency and hospital screens show the same citizen's case, so resolve the name for every role
-          loadSignedInProfile();
+          // Agency and hospital screens show the same citizen's case, so resolve the profile for every role
+          await loadSignedInProfile();
+          await loadApplicantCases();
           go(r === "applicant" ? "verify" : r === "hospital_staff" ? "hospital" : "agency", r);
         }}
       />
@@ -130,54 +170,54 @@ export default function Home() {
       />
     );
 
-  // Applied at render so it can't be lost if getCases() resolves after sign-in
-  const signedInCase = activeCase ? { ...activeCase, applicant_name: applicantName } : null;
-
   return (
     <div className="shell">
-      <Nav role={role} screen={screen} go={go} applicantName={applicantName} onSwitchRole={switchRole} />
+      <Nav role={role} screen={screen} go={go} applicantName={applicantName} onSwitchRole={switchRole} onLogout={handleLogout} />
       <main>
-        <Top role={role} verified={verified} applicantName={applicantName} onOpenDrawer={() => setIsDrawerOpen(true)} onLogout={() => go("login")} />
+        <Top role={role} verified={verified} applicantName={applicantName} onOpenDrawer={() => setIsDrawerOpen(true)} onLogout={handleLogout} />
         <div className="content">
-          {screen === "dashboard" && <DashboardView go={go} approved={approved} used={used} activeCase={signedInCase} />}
+          {screen === "dashboard" && <DashboardView go={go} selection={selection} />}
           {screen === "builder" && <RequirementBuilderView go={go} notify={notify} />}
-          {screen === "apply" && <ApplyWizardView go={go} notify={notify} />}
-          {screen === "documents" && <DocumentUploadView go={go} notify={notify} />}
-          {screen === "catalog" && <VerifiedCatalogView go={go} />}
-          {screen === "submit" && <SubmitSelectionView go={go} notify={notify} />}
-          {screen === "hospital" && <HospitalQueueView go={go} notify={notify} applicantName={applicantName} />}
-          {screen === "hospital_detail" && <HospitalDetailView go={go} notify={notify} />}
-          {screen === "agency" && <AgencyInboxView go={go} notify={notify} applicantName={applicantName} />}
+          {screen === "apply" && <ApplyWizardView go={go} notify={notify} select={select} />}
+          {screen === "documents" && <DocumentUploadView go={go} notify={notify} selection={selection} />}
+          {screen === "catalog" && <VerifiedCatalogView go={go} selection={selection} />}
+          {screen === "submit" && <SubmitSelectionView go={go} notify={notify} selection={selection} />}
+          {screen === "hospital" && <HospitalQueueView go={go} select={select} />}
+          {screen === "hospital_detail" && (
+            <HospitalDetailView go={go} notify={notify} selection={selection} />
+          )}
+          {screen === "agency" && <AgencyInboxView go={go} notify={notify} select={select} />}
           {screen === "agency_review" && (
             <AgencyReviewView
               go={go}
-              applicantName={applicantName}
-              applicantMobile={applicantMobile}
-              approve={async (amount) => {
+              selection={selection}
+              notify={notify}
+              approve={async (amount, reason) => {
+                if (!selection.applicationId) {
+                  notify("Open an application from the inbox before issuing a guarantee letter.");
+                  return null;
+                }
                 try {
-                  await api.submitDecision(1, "approve", amount, "Eligible medical assistance");
-                } catch (e) { }
-                setApproved(true);
-                notify("Guarantee letter GL-DSWD-2026-04821 generated and issued!");
+                  const res = await api.submitDecision(selection.applicationId, "approve", amount, reason);
+                  const gl = res.guarantee_letter;
+                  if (gl) {
+                    select({ guaranteeId: gl.id });
+                    notify(res.message || `Guarantee letter ${gl.gl_number} issued.`);
+                  } else {
+                    notify(res.message || "Decision recorded.");
+                  }
+                  return res;
+                } catch (err: any) {
+                  notify(err?.message || "The agency decision could not be recorded.");
+                  return null;
+                }
               }}
             />
           )}
-          {screen === "guarantee" && <GuaranteeView go={go} used={used} applicantName={applicantName} />}
-          {screen === "validate" && (
-            <ValidateView
-              utilize={async (amount, billingRef) => {
-                try {
-                  await api.recordUtilization(1, amount, billingRef);
-                } catch (e) { }
-                setUsed((prev) => prev + amount);
-                notify(`₱${amount.toLocaleString("en-PH")} utilization recorded; citizen and DSWD NCR notified!`);
-              }}
-              used={used}
-              applicantName={applicantName}
-            />
-          )}
+          {screen === "guarantee" && <GuaranteeView go={go} selection={selection} select={select} />}
+          {screen === "validate" && <ValidateView selection={selection} notify={notify} />}
           {screen === "egov_hub" && <EGovIntegrationHub />}
-          {screen === "audit_logs" && <AuditLogsView go={go} />}
+          {screen === "audit_logs" && <AuditLogsView go={go} selection={selection} />}
         </div>
       </main>
 
@@ -186,10 +226,10 @@ export default function Home() {
 
       {/* Mobile Drawer Overlay */}
       {isDrawerOpen && (
-        <MobileDrawer role={role} screen={screen} go={go} onClose={() => setIsDrawerOpen(false)} applicantName={applicantName} onSwitchRole={switchRole} />
+        <MobileDrawer role={role} screen={screen} go={go} onClose={() => setIsDrawerOpen(false)} applicantName={applicantName} onSwitchRole={switchRole} onLogout={handleLogout} />
       )}
 
-      {role && <ChatbotWidget role={role} activeCase={signedInCase} />}
+      {role && <ChatbotWidget role={role} activeCase={null} />}
 
       {toast && (
         <div className="toast">

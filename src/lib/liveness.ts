@@ -1,12 +1,47 @@
 // Official eGov / eVerify Face Liveness Web SDK (also loaded by the <script> tag in app/layout.tsx).
 // eKYC().start({ pubKey }) opens https://liveness.everify.gov.ph in a full-screen iframe with camera
 // access and resolves with the JSON that page posts back: { photo, session_id, photo_url }.
-export const LIVENESS_SDK_SRC = "https://hackathon-everify-face-liveness.e.gov.ph/js/everify-liveness-sdk.min.js";
-const LIVENESS_ORIGIN = "https://liveness.everify.gov.ph";
+//
+// The SDK URL, iframe origin and public key all come from
+// `GET /api/v1/egov/public-config` (they are public by design), so rotating
+// them is a backend config change instead of an edit to copied frontend
+// literals. The values below are only the pre-fetch fallbacks.
+import { api } from "@/lib/api";
 
-// Same public key as EGOV_EVERIFY_PUBKEY on the backend (the eVerify account used for the check)
-export const EVERIFY_PUBKEY =
-  "eyJpdiI6InAzOGc3d1BZcVVZck1IY3plS0xscVE9PSIsInZhbHVlIjoiSlRESmdFYkZ4ZnV3M1ZkUjFiTHpDUT09IiwibWFjIjoiZTEzZjI5ZGRkZTVhNWNkNGU3ZmQ0NDY4MTAyZDY2Yjc1NjJiYmMxNTMwN2E2NzVlZmM5ZjhjZmEyZWM1ZmMwMCIsInRhZyI6IiJ9";
+export const DEFAULT_LIVENESS_SDK_SRC = "https://hackathon-everify-face-liveness.e.gov.ph/js/everify-liveness-sdk.min.js";
+const DEFAULT_LIVENESS_ORIGIN = "https://liveness.everify.gov.ph";
+
+let sdkSrc = DEFAULT_LIVENESS_SDK_SRC;
+let livenessOrigin = DEFAULT_LIVENESS_ORIGIN;
+let everifyPubKey = "";
+
+export type PublicLivenessConfig = { sdk_src?: string | null; origin?: string | null; pubkey?: string | null };
+
+/** Applies the public liveness config served by the backend. */
+export function applyLivenessConfig(cfg: PublicLivenessConfig | null | undefined): void {
+  if (!cfg) return;
+  if (cfg.sdk_src) sdkSrc = cfg.sdk_src;
+  if (cfg.origin) livenessOrigin = cfg.origin;
+  if (cfg.pubkey) everifyPubKey = cfg.pubkey;
+}
+
+/** Public config fetched once per session; safe to call repeatedly. */
+let publicConfigPromise: Promise<void> | null = null;
+export function ensurePublicConfig(): Promise<void> {
+  if (!publicConfigPromise) {
+    publicConfigPromise = api
+      .getPublicConfig()
+      .then((cfg) => applyLivenessConfig(cfg?.liveness))
+      .catch(() => {
+        // The defaults above keep the SDK usable when the config call fails.
+      });
+  }
+  return publicConfigPromise;
+}
+
+export const getLivenessOrigin = () => livenessOrigin;
+export const getLivenessSdkSrc = () => sdkSrc;
+export const getEVerifyPubKey = () => everifyPubKey;
 
 export type LivenessCapture = { sessionId: string; photo?: string; photoUrl?: string };
 
@@ -27,21 +62,24 @@ export function loadLivenessSdk(timeoutMs = 10000): Promise<EKycFactory | null> 
   if (typeof window === "undefined") return Promise.resolve(null);
   const ready = getFactory();
   if (ready) return Promise.resolve(ready);
-  return new Promise((resolve) => {
-    const script = document.createElement("script");
-    script.src = LIVENESS_SDK_SRC;
-    script.async = true;
-    const timer = window.setTimeout(() => resolve(getFactory()), timeoutMs);
-    script.onload = () => {
-      window.clearTimeout(timer);
-      resolve(getFactory());
-    };
-    script.onerror = () => {
-      window.clearTimeout(timer);
-      resolve(null);
-    };
-    document.head.appendChild(script);
-  });
+  return ensurePublicConfig().then(
+    () =>
+      new Promise((resolve) => {
+        const script = document.createElement("script");
+        script.src = sdkSrc;
+        script.async = true;
+        const timer = window.setTimeout(() => resolve(getFactory()), timeoutMs);
+        script.onload = () => {
+          window.clearTimeout(timer);
+          resolve(getFactory());
+        };
+        script.onerror = () => {
+          window.clearTimeout(timer);
+          resolve(null);
+        };
+        document.head.appendChild(script);
+      })
+  );
 }
 
 const toCapture = (raw: unknown): LivenessCapture => {
@@ -92,7 +130,7 @@ const showCover = () => {
 
 const removeOverlay = () => {
   document.getElementById(COVER_ID)?.remove();
-  document.querySelector(`iframe[src^="${LIVENESS_ORIGIN}"]`)?.parentElement?.remove();
+  document.querySelector(`iframe[src^="${livenessOrigin}"]`)?.parentElement?.remove();
 };
 
 const hasCapture = (c: LivenessCapture) => Boolean(c.sessionId || c.photo || c.photoUrl);
@@ -105,6 +143,9 @@ export async function runFaceLiveness(scanMs = SCAN_WINDOW_MS, coverMs = COVER_A
   const factory = await loadLivenessSdk();
   if (!factory) {
     return { status: "error", message: "The eGov Face Liveness SDK couldn't be loaded. Check the internet connection and try again." };
+  }
+  if (!everifyPubKey) {
+    return { status: "error", message: "The eVerify face liveness public key is not configured. Check the backend's public config endpoint." };
   }
 
   return new Promise((resolve) => {
@@ -132,7 +173,7 @@ export async function runFaceLiveness(scanMs = SCAN_WINDOW_MS, coverMs = COVER_A
     // run its course rather than cutting off the moment it reports. The SDK stops listening after the
     // first postMessage from any origin, so read the capture from the liveness origin here too.
     const onMessage = (ev: MessageEvent) => {
-      if (ev.origin !== LIVENESS_ORIGIN) return;
+      if (ev.origin !== livenessOrigin) return;
       const c = toCapture(ev.data);
       if (hasCapture(c)) capture = c;
     };
@@ -140,7 +181,7 @@ export async function runFaceLiveness(scanMs = SCAN_WINDOW_MS, coverMs = COVER_A
 
     try {
       factory()
-        .start({ pubKey: EVERIFY_PUBKEY })
+        .start({ pubKey: everifyPubKey })
         .then(
           (res) => {
             const c = toCapture(res?.result);
