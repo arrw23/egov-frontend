@@ -65,9 +65,9 @@ const removeOverlay = () => {
   document.querySelector(`iframe[src^="${LIVENESS_ORIGIN}"]`)?.parentElement?.remove();
 };
 
-// Opens the official eGov Face Liveness camera and completes the scan step. Resolves "completed"
-// when the capture returns or once the scan window (autoMs) elapses; "cancelled" if the person
-// closes the camera first; "error" only when the SDK itself can't load.
+// Opens the official eGov Face Liveness camera. Resolves "completed" with the capture from the eGov
+// page (or after a fallback timeout if it doesn't report back), "cancelled" if the person closes the
+// camera, "error" only when the SDK itself can't load.
 export async function runFaceLiveness(autoMs = 5000): Promise<LivenessOutcome> {
   const factory = await loadLivenessSdk();
   if (!factory) {
