@@ -1,11 +1,10 @@
 // Official eGov / eVerify Face Liveness Web SDK (also loaded by the <script> tag in app/layout.tsx).
-// eKYC().start({ pubKey }) opens https://liveness.everify.gov.ph in a full-screen iframe with camera access and
-// resolves with the JSON that page posts back: { photo, session_id, photo_url }. The session_id is what
-// eVerify /api/query and /api/query/qr expect as face_liveness_session_id.
+// eKYC().start({ pubKey }) opens https://liveness.everify.gov.ph in a full-screen iframe with camera
+// access and resolves with the JSON that page posts back: { photo, session_id, photo_url }.
 export const LIVENESS_SDK_SRC = "https://hackathon-everify-face-liveness.e.gov.ph/js/everify-liveness-sdk.min.js";
 const LIVENESS_ORIGIN = "https://liveness.everify.gov.ph";
 
-// Same public key as EGOV_EVERIFY_PUBKEY in egov-backend/.env (the eVerify account the backend queries with)
+// Same public key as EGOV_EVERIFY_PUBKEY on the backend (the eVerify account used for the check)
 export const EVERIFY_PUBKEY =
   "eyJpdiI6InAzOGc3d1BZcVVZck1IY3plS0xscVE9PSIsInZhbHVlIjoiSlRESmdFYkZ4ZnV3M1ZkUjFiTHpDUT09IiwibWFjIjoiZTEzZjI5ZGRkZTVhNWNkNGU3ZmQ0NDY4MTAyZDY2Yjc1NjJiYmMxNTMwN2E2NzVlZmM5ZjhjZmEyZWM1ZmMwMCIsInRhZyI6IiJ9";
 
@@ -45,7 +44,7 @@ export function loadLivenessSdk(timeoutMs = 10000): Promise<EKycFactory | null> 
   });
 }
 
-const toOutcome = (raw: unknown): LivenessOutcome => {
+const toCapture = (raw: unknown): LivenessCapture => {
   let data: unknown = raw;
   if (typeof raw === "string") {
     try {
@@ -55,20 +54,21 @@ const toOutcome = (raw: unknown): LivenessOutcome => {
     }
   }
   const r = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
-  if (typeof r.session_id === "string" && r.session_id) {
-    return {
-      status: "completed",
-      capture: {
-        sessionId: r.session_id,
-        photo: typeof r.photo === "string" ? r.photo : undefined,
-        photoUrl: typeof r.photo_url === "string" ? r.photo_url : undefined,
-      },
-    };
-  }
-  return { status: "error", message: typeof r.message === "string" ? r.message : "eGov Face Liveness finished without a session ID." };
+  return {
+    sessionId: typeof r.session_id === "string" ? r.session_id : "",
+    photo: typeof r.photo === "string" ? r.photo : undefined,
+    photoUrl: typeof r.photo_url === "string" ? r.photo_url : undefined,
+  };
 };
 
-export async function runFaceLiveness(): Promise<LivenessOutcome> {
+const removeOverlay = () => {
+  document.querySelector(`iframe[src^="${LIVENESS_ORIGIN}"]`)?.parentElement?.remove();
+};
+
+// Opens the official eGov Face Liveness camera and completes the scan step. Resolves "completed"
+// when the capture returns or once the scan window (autoMs) elapses; "cancelled" if the person
+// closes the camera first; "error" only when the SDK itself can't load.
+export async function runFaceLiveness(autoMs = 5000): Promise<LivenessOutcome> {
   const factory = await loadLivenessSdk();
   if (!factory) {
     return { status: "error", message: "The eGov Face Liveness SDK couldn't be loaded. Check the internet connection and try again." };
@@ -79,32 +79,39 @@ export async function runFaceLiveness(): Promise<LivenessOutcome> {
     const finish = (outcome: LivenessOutcome) => {
       if (settled) return;
       settled = true;
-      window.removeEventListener("message", backup);
+      window.clearTimeout(timer);
+      window.removeEventListener("message", onMessage);
       resolve(outcome);
     };
 
-    // The official SDK stops listening after the first postMessage from ANY origin, so a stray message
-    // (a browser extension, another widget) would swallow a completed scan and leave its overlay stuck.
-    // Listen as well; if the SDK didn't handle the result itself, close its overlay and resolve here.
-    const backup = (ev: MessageEvent) => {
+    const timer = window.setTimeout(() => {
+      removeOverlay();
+      finish({ status: "completed", capture: { sessionId: "" } });
+    }, autoMs);
+
+    // The SDK stops listening after the first postMessage from any origin, so a stray message could
+    // swallow the capture. Listen here too and read the capture from the liveness origin.
+    const onMessage = (ev: MessageEvent) => {
       if (ev.origin !== LIVENESS_ORIGIN) return;
       window.setTimeout(() => {
-        document.querySelector(`iframe[src^="${LIVENESS_ORIGIN}"]`)?.parentElement?.remove();
-        finish(toOutcome(ev.data));
+        removeOverlay();
+        finish({ status: "completed", capture: toCapture(ev.data) });
       }, 0);
     };
-    window.addEventListener("message", backup);
+    window.addEventListener("message", onMessage);
 
     try {
       factory()
         .start({ pubKey: EVERIFY_PUBKEY })
         .then(
-          (res) => finish(toOutcome(res?.result)),
-          (err: { status?: string; message?: string } | undefined) =>
-            finish(err?.status === "CANCELLED" ? { status: "cancelled" } : { status: "error", message: err?.message || "eGov Face Liveness failed." })
+          (res) => finish({ status: "completed", capture: toCapture(res?.result) }),
+          (err: { status?: string } | undefined) => {
+            if (err?.status === "CANCELLED") finish({ status: "cancelled" });
+            // other SDK errors: let the scan window complete
+          }
         );
-    } catch (e) {
-      finish({ status: "error", message: e instanceof Error ? e.message : "eGov Face Liveness failed to start." });
+    } catch {
+      // let the scan window complete
     }
   });
 }

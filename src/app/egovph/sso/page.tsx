@@ -86,11 +86,6 @@ function SSOContent() {
       if (typeof window !== "undefined") {
         localStorage.setItem("egov_user_info", JSON.stringify({
           ...profile,
-          // Exact name parts for PhilSys eVerify (splitting the full name breaks "DELA CRUZ", suffixes, etc.)
-          first_name: data.first_name || undefined,
-          middle_name: data.middle_name || undefined,
-          last_name: data.last_name || undefined,
-          suffix: data.suffix || undefined,
           exchange_code: code,
           access_token: accessToken,
         }));
