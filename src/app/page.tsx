@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { Role, Screen, Selection } from "@/types";
 import { MobileDrawer, MobileNav, Nav, Top } from "@/components/layout/Navbar";
@@ -22,6 +22,8 @@ import { ChatbotWidget } from "@/components/screens/ChatbotWidget";
 export default function Home() {
   const [role, setRole] = useState<Role>("applicant");
   const [screen, setScreen] = useState<Screen>("login");
+  /** True while an eGovPH SSO handoff is settling, so the login page never shows. */
+  const [ssoHandoff, setSsoHandoff] = useState(false);
   const [verified, setVerified] = useState(false);
   const [toast, setToast] = useState("");
   /**
@@ -78,32 +80,39 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const arrivingFromSso = window.location.search.includes("sso=authenticated");
+
+    if (arrivingFromSso) {
+      // Drop the SSO query params so a refresh doesn't replay the sign-in
+      window.history.replaceState(null, "", window.location.pathname);
+      // Renders the handoff screen immediately instead of leaving the visitor on
+      // the login page while the session settles.
+      setSsoHandoff(true);
+
+      // exchangeEgovCode() already stored the Sanctum token for the citizen SSO
+      // resolved, and restoreSession() would have opened a mock applicant session
+      // over the top of it. Load the real profile instead.
+      (async () => {
+        await Promise.allSettled([loadSignedInProfile(), loadApplicantCases()]);
+        setSsoHandoff(false);
+        // SSO only authenticates; PhilSys eVerify + face liveness still has to
+        // run before the case page.
+        setRole("applicant");
+        setVerified(false);
+        setScreen("verify");
+      })();
+
+      return;
+    }
+
     // Every route is behind Sanctum, so restore (or open) a session before any
     // screen fires its own requests.
     api
       .restoreSession()
       .then(() => Promise.all([loadSignedInProfile(), loadApplicantCases()]))
       .catch(() => undefined);
-
-    if (typeof window !== "undefined" && window.location.search.includes("sso=authenticated")) {
-      // Drop the SSO query params so a refresh doesn't replay the sign-in
-      window.history.replaceState(null, "", window.location.pathname);
-
-      // SSO only authenticates; PhilSys eVerify + face liveness still has to run before the case page
-      const toVerify = () => {
-        setRole("applicant");
-        setVerified(false);
-        setScreen("verify");
-      };
-      api
-        .mockLogin("applicant")
-        .catch(() => undefined)
-        .then(async () => {
-          await loadSignedInProfile();
-          await loadApplicantCases();
-        })
-        .finally(toVerify);
-    }
   }, [loadSignedInProfile, loadApplicantCases]);
 
   const go = (s: Screen, r = role) => {
@@ -145,6 +154,31 @@ export default function Home() {
     setVerified(false);
     go("login");
   };
+
+  // Shown between the eGovPH redirect and PhilSys verification, so the visitor
+  // never lands on the login page mid-handoff.
+  if (ssoHandoff)
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "1rem",
+          background: "#f5f3ff",
+        }}
+      >
+        <RefreshCw size={30} color="#4338ca" className="spin" />
+        <p style={{ fontSize: "1.05rem", fontWeight: 900, color: "#1e1b4b", margin: 0 }}>
+          Completing your eGovPH sign-in…
+        </p>
+        <p style={{ fontSize: "0.85rem", fontWeight: 700, color: "#4338ca", margin: 0 }}>
+          Loading your profile, then PhilSys identity verification.
+        </p>
+      </div>
+    );
 
   if (screen === "login")
     return (
