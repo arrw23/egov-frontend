@@ -281,15 +281,17 @@ export const api = {
     }));
   },
 
+  /**
+   * Core citizen-facing AI. No sandbox fallback: a canned answer here is
+   * indistinguishable from a real eGov reply, so an unreachable backend has to
+   * surface as the error the widget already knows how to show.
+   */
   async generateAiAssistant(prompt: string, category: string = 'PH', token: string = ''): Promise<{ data: string; session_id: string }> {
     return request<{ data: string; session_id: string }>('/api/v1/egov/integration/ai_assistant/generate', {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: JSON.stringify({ prompt, category }),
-    }, true, () => ({
-      data: `To obtain your digital Taxpayer Identification Number (TIN) ID through the eGovPH app, ensure you have a Digital TIN registered in the BIR ORUS system. Prompt processed: "${prompt}". You can also file unified medical guarantee letters directly through GabayMed.`,
-      session_id: "b67017a4-da57-40ab-96c9-ca0ccb530ec7",
-    }));
+    }, true);
   },
 
   async generateSpeechMaker(prompt: string, category: string = 'PH', token: string = ''): Promise<{ data: string; session_id: string }> {
@@ -297,10 +299,7 @@ export const api = {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: JSON.stringify({ prompt, category }),
-    }, true, () => ({
-      data: `Magandang araw po sa inyong lahat! Isang karangalan po ang tumayo sa inyong harapan upang talakayin ang topic na: "${prompt}". Ang ating bansa ay patuloy na umuunlad sa pamamagitan ng digitalisasyon at eGov services.`,
-      session_id: "d6b5c2be-11ff-41f1-ac92-fdba3bcc75ca",
-    }));
+    }, true);
   },
 
   async generateTourism(prompt: string, category: string = 'PH', token: string = ''): Promise<{ data: string; session_id: string }> {
@@ -308,10 +307,7 @@ export const api = {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: JSON.stringify({ prompt, category }),
-    }, true, () => ({
-      data: `Boracay Island, located in Aklan province in Western Visayas, is renowned globally for its pristine white sand beaches...\n\n**Day 1: Arrival and White Beach Exploration**\nCheck into your resort and enjoy sunset views at Station 1. Prompt query: "${prompt}".`,
-      session_id: "525d4e90-245c-4415-91a3-9cc1f1dd4497",
-    }));
+    }, true);
   },
 
   async generateLawsAndRegulations(prompt: string, category: string = 'PH', token: string = ''): Promise<{ data: string; session_id: string }> {
@@ -319,10 +315,7 @@ export const api = {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: JSON.stringify({ prompt, category }),
-    }, true, () => ({
-      data: `Ako ay isang eGovPH AI Assistant na nilikha upang tulungan ang mga mamamayang Pilipino sa mga batas at regulasyon.\n\nKatanungan: "${prompt}". Sa ilalim ng RA 11032 (Ease of Doing Business) at RA 10173 (Data Privacy Act), ang digital public assistance ay protektado ng batas.`,
-      session_id: "6220bc87-0ba9-4fd9-9fda-d5c44b31a061",
-    }));
+    }, true);
   },
 
   async translateText(prompt: string, sourceLang: string = 'en', targetLang: string = 'fil', token: string = ''): Promise<any> {
@@ -330,14 +323,7 @@ export const api = {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: JSON.stringify({ prompt, source_lang: sourceLang, target_lang: targetLang }),
-    }, true, () => ({
-      original_prompt: prompt,
-      source_lang: sourceLang,
-      target_lang: targetLang,
-      translate_from: { code: sourceLang, label: "English" },
-      translated_prompt: "Paano dapat umangkop ang sistema ng edukasyon upang ihanda ang mga susunod na henerasyon sa AI collaboration?",
-      transliterated_prompt: "Paano dapat umangkop ang sistema ng edukasyon...",
-    }));
+    }, true);
   },
 
   /**
