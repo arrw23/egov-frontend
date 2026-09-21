@@ -34,6 +34,9 @@ export function ensurePublicConfig(): Promise<void> {
       .then((cfg) => applyLivenessConfig(cfg?.liveness))
       .catch(() => {
         // The defaults above keep the SDK usable when the config call fails.
+        // Drop the cached promise as well, so the next attempt retries instead
+        // of locking an empty public key in for the rest of the session.
+        publicConfigPromise = null;
       });
   }
   return publicConfigPromise;
@@ -58,28 +61,34 @@ const getFactory = (): EKycFactory | null => {
 };
 
 // Use the SDK from layout.tsx if it's there; otherwise (still loading, or it failed) inject it again
-export function loadLivenessSdk(timeoutMs = 10000): Promise<EKycFactory | null> {
-  if (typeof window === "undefined") return Promise.resolve(null);
+export async function loadLivenessSdk(timeoutMs = 10000): Promise<EKycFactory | null> {
+  if (typeof window === "undefined") return null;
+
+  // Awaited before the early return below. The public key arrives from
+  // /egov/public-config, and short-circuiting on an already-loaded SDK skipped
+  // that fetch — so everifyPubKey was still empty whenever the script happened
+  // to be present already (any retry, or a second liveness run on the same
+  // page), and the camera refused to open with "public key is not configured".
+  await ensurePublicConfig();
+
   const ready = getFactory();
-  if (ready) return Promise.resolve(ready);
-  return ensurePublicConfig().then(
-    () =>
-      new Promise((resolve) => {
-        const script = document.createElement("script");
-        script.src = sdkSrc;
-        script.async = true;
-        const timer = window.setTimeout(() => resolve(getFactory()), timeoutMs);
-        script.onload = () => {
-          window.clearTimeout(timer);
-          resolve(getFactory());
-        };
-        script.onerror = () => {
-          window.clearTimeout(timer);
-          resolve(null);
-        };
-        document.head.appendChild(script);
-      })
-  );
+  if (ready) return ready;
+
+  return new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = sdkSrc;
+    script.async = true;
+    const timer = window.setTimeout(() => resolve(getFactory()), timeoutMs);
+    script.onload = () => {
+      window.clearTimeout(timer);
+      resolve(getFactory());
+    };
+    script.onerror = () => {
+      window.clearTimeout(timer);
+      resolve(null);
+    };
+    document.head.appendChild(script);
+  });
 }
 
 const toCapture = (raw: unknown): LivenessCapture => {
