@@ -264,10 +264,15 @@ export const api = {
     }));
   },
 
-  async getAiCredits(token: string = ''): Promise<{ credits_total: number; credits_used: number; credits_remaining: number; expires_at: string }> {
-    return request<{ credits_total: number; credits_used: number; credits_remaining: number; expires_at: string }>('/api/v1/egov/integration/credits', {
+  /**
+   * Credit balance for the server-side AI credential. It takes no bearer: the
+   * backend authenticates to eGov with its own access code, and putting the AI
+   * token in Authorization here displaced the Sanctum session header and made
+   * the auth-protected route answer 401.
+   */
+  async getAiCredits(): Promise<{ credits_total: number; credits_used: number; credits_remaining: number; expires_at: string; simulated?: boolean }> {
+    return request<{ credits_total: number; credits_used: number; credits_remaining: number; expires_at: string; simulated?: boolean }>('/api/v1/egov/integration/credits', {
       method: 'GET',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
     }, true, () => ({
       credits_total: 200,
       credits_used: 1,

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, ShieldCheck, X, Cpu, Hash, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ShieldCheck, X, Cpu, Hash, RefreshCw, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import { CaseDocument } from "@/types";
 
@@ -46,6 +46,15 @@ export function BlockchainProofModal({
   }, [doc]);
 
   const extracted = (doc.extracted_json as any) || {};
+
+  // eGov AI output for this document. `ai_analysis` is genuine model output;
+  // `extraction.status` reports whether field-level OCR actually ran, so the
+  // panel never implies extracted content when the provider refused the upload.
+  const aiGuidance: string | null =
+    typeof extracted.ai_analysis === "string" && extracted.ai_analysis.trim() !== ""
+      ? extracted.ai_analysis.trim()
+      : null;
+  const ocr = extracted.extraction || null;
   const blockchain = proofData?.blockchain || null;
   const simulated = blockchain?.simulated ?? extracted.ledger_simulated ?? null;
   const anchored = blockchain?.simulated === false && !!blockchain?.transaction_hash;
@@ -183,6 +192,34 @@ export function BlockchainProofModal({
                 {proofData?.document?.verification_reference || doc.verification_reference || "—"}
               </div>
             </div>
+
+            {(aiGuidance || ocr) && (
+              <div style={{ background: "#f5f3ff", border: "2px solid #c4b5fd", borderRadius: 16, padding: "1rem 1.25rem" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", color: "#5b21b6", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.4rem" }}>
+                  <Sparkles size={14} /> eGov AI · Review Guidance
+                </div>
+                {aiGuidance ? (
+                  <p style={{ fontSize: "0.9rem", color: "#3b0764", fontWeight: 600, lineHeight: 1.55, margin: 0 }}>{aiGuidance}</p>
+                ) : (
+                  <p style={{ fontSize: "0.9rem", color: "#6b21a8", fontWeight: 600, margin: 0 }}>
+                    No AI guidance was returned for this document. Its type above comes from the upload metadata only.
+                  </p>
+                )}
+
+                {ocr?.status === "unavailable" && (
+                  <div style={{ marginTop: "0.75rem", background: "#fefce8", border: "1.5px solid #facc15", borderRadius: 12, padding: "0.6rem 0.75rem" }}>
+                    <b style={{ fontSize: "0.78rem", color: "#854d0e", display: "block" }}>FIELD-LEVEL OCR UNAVAILABLE</b>
+                    <span style={{ fontSize: "0.78rem", color: "#713f12", fontWeight: 600 }}>
+                      {ocr.hint || ocr.message || "The document extractor did not return a result."}
+                    </span>
+                  </div>
+                )}
+
+                <small style={{ display: "block", marginTop: "0.6rem", fontSize: "0.75rem", color: "#4338ca", fontWeight: 700 }}>
+                  {extracted.disclaimer || "Subject to authorized staff review."}
+                </small>
+              </div>
+            )}
 
             <div style={{ background: "#eff6ff", border: "2px solid #93c5fd", borderRadius: 16, padding: "1rem 1.25rem" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", color: "#1e40af", fontWeight: 800, textTransform: "uppercase", marginBottom: "0.3rem" }}>

@@ -810,8 +810,8 @@ export function EGovIntegrationHub() {
                       className="primary"
                       onClick={() =>
                         runApiCall(
-                          () => api.getAiCredits(aiTokenValue),
-                          `GET /api/v1/egov/integration/credits -> Check Remaining Credits`
+                          () => api.getAiCredits(),
+                          `GET /api/v1/egov/integration/credits -> session-authenticated; the backend supplies the eGov AI bearer itself`
                         )
                       }
                       style={{ padding: "0.6rem 0.8rem", fontSize: "0.8rem", whiteSpace: "nowrap" }}
